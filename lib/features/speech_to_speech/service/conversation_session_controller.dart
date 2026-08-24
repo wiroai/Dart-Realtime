@@ -8,6 +8,10 @@ import 'package:wiro_realtime/features/speech_to_speech/service/conversation_ses
 /// The view model depends on this contract rather than on
 /// `SpeechToSpeechSessionService` so it can be exercised without audio
 /// hardware or a network stack.
+///
+/// Every command is a no-op once [dispose] has run. Teardown races with the
+/// widget lifecycle, so a late command is an expected condition rather than a
+/// caller error.
 abstract interface class ConversationSessionController {
   /// Emits on every session change, synchronously.
   Stream<ConversationSessionSnapshot> get snapshots;

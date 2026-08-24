@@ -11,6 +11,12 @@ final class RealtimeOperationGuard {
   /// The id of the most recently started operation.
   int get current => _current;
 
+  /// Whether the owner has been torn down, making every operation stale.
+  ///
+  /// Callers use this to refuse work that has no id yet, since [isCurrent]
+  /// can only speak for an operation that already started.
+  bool get isDisposed => _disposed;
+
   /// Claims a new operation id and supersedes every earlier one.
   int begin() => ++_current;
 

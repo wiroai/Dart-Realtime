@@ -109,6 +109,9 @@ final class SpeechToSpeechSessionService
 
   @override
   Future<void> start() {
+    if (_guard.isDisposed) {
+      return Future<void>.value();
+    }
     if (!_snapshot.sessionState.canStart) {
       return Future<void>.value();
     }
@@ -261,6 +264,9 @@ final class SpeechToSpeechSessionService
 
   @override
   Future<void> stop() {
+    if (_guard.isDisposed) {
+      return Future<void>.value();
+    }
     final pendingStop = _stopOperation;
     if (pendingStop != null) {
       return pendingStop;
@@ -340,6 +346,9 @@ final class SpeechToSpeechSessionService
 
   @override
   void setMuted({required bool muted}) {
+    if (_guard.isDisposed) {
+      return;
+    }
     recorder.setMuted(muted: muted);
     _publish(
       _snapshot.copyWith(
@@ -352,6 +361,9 @@ final class SpeechToSpeechSessionService
 
   @override
   void setSpeakerEnabled({required bool enabled}) {
+    if (_guard.isDisposed) {
+      return;
+    }
     _publish(_snapshot.copyWith(speakerEnabled: enabled));
     unawaited(player.setEnabled(enabled: enabled));
   }
@@ -367,7 +379,7 @@ final class SpeechToSpeechSessionService
   }
 
   void _publish(ConversationSessionSnapshot next) {
-    if (next == _snapshot) {
+    if (_guard.isDisposed || next == _snapshot) {
       return;
     }
     _snapshot = next;

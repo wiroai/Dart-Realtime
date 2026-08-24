@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/realtime/realtime_event.dart';
+import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
 import 'support/conversation_test_dependencies.dart';
@@ -317,6 +318,37 @@ void main() {
     expect(service.snapshot.sessionState, RealtimeSessionState.failure);
     expect(service.snapshot.revealProtocolPanel, isTrue);
     expect(service.snapshot.errorMessage, isNotNull);
+  });
+
+  test('a command after dispose is ignored, not an error', () async {
+    final dependencies = ConversationTestDependencies();
+    final service = dependencies.createService();
+    await service.start();
+    await service.dispose();
+
+    await service.start();
+    await service.stop();
+    service
+      ..setMuted(muted: true)
+      ..setSpeakerEnabled(enabled: false);
+
+    expect(dependencies.apiClient.runCalls, 1);
+    expect(dependencies.recorder.startCalls, 1);
+  });
+
+  test('a start after dispose does not strand the shared lease', () async {
+    final dependencies = ConversationTestDependencies();
+    final service = dependencies.createService();
+    await service.dispose();
+
+    await service.start();
+
+    // The guard is global, so a lease stranded here would lock speech to text
+    // and text to speech out of the microphone for the rest of the process.
+    expect(
+      dependencies.sessionGuard.acquire(RealtimeSessionOwner.transcription),
+      isNotNull,
+    );
   });
 
   test('keeps the local protocol history bounded', () async {

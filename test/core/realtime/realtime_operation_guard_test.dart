@@ -33,6 +33,15 @@ void main() {
     expect(guard.isCurrent(guard.begin()), isFalse);
   });
 
+  test('disposal is reported for callers holding no operation id', () {
+    final guard = RealtimeOperationGuard();
+    expect(guard.isDisposed, isFalse);
+
+    guard.dispose();
+
+    expect(guard.isDisposed, isTrue);
+  });
+
   test('an unclaimed id is not current before any operation starts', () {
     final guard = RealtimeOperationGuard();
 
