@@ -10,6 +10,7 @@ import 'package:wiro_realtime/core/network/wiro_http_client.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/core/realtime/web_socket_realtime_socket_client.dart';
+import 'package:wiro_realtime/features/speech_to_text/service/speech_to_text_session_service.dart';
 import 'package:wiro_realtime/features/speech_to_text/view/speech_to_text_view.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/speech_to_text_view_model.dart';
 
@@ -23,21 +24,23 @@ mixin SpeechToTextViewMixin on State<SpeechToTextView> {
     super.initState();
     _httpClient = DioWiroHttpClient();
     speechToTextViewModel = SpeechToTextViewModel(
-      audioSession: widget.audioSession,
-      apiClient: DefaultWiroApiClient(
-        _httpClient,
-        WiroAuthHeaders(credentials: widget.credentials),
+      sessionService: SpeechToTextSessionService(
+        audioSession: widget.audioSession,
+        apiClient: DefaultWiroApiClient(
+          _httpClient,
+          WiroAuthHeaders(credentials: widget.credentials),
+        ),
+        sessionFactory: ({required taskId, required taskToken}) =>
+            RealtimeSession(
+              socketClient: WebSocketRealtimeSocketClient(),
+              taskId: taskId,
+              taskToken: taskToken,
+            ),
+        recorder: BufferedPcmAudioRecorder(
+          RecordPcmCaptureSource(),
+        ),
+        sessionGuard: widget.sessionGuard,
       ),
-      sessionFactory: ({required taskId, required taskToken}) =>
-          RealtimeSession(
-            socketClient: WebSocketRealtimeSocketClient(),
-            taskId: taskId,
-            taskToken: taskToken,
-          ),
-      recorder: BufferedPcmAudioRecorder(
-        RecordPcmCaptureSource(),
-      ),
-      sessionGuard: widget.sessionGuard,
     );
     _appLifecycleListener = AppLifecycleListener(
       onHide: _stopActiveSession,

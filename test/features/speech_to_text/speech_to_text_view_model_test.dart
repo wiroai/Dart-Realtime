@@ -1,427 +1,213 @@
 import 'dart:async';
-import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wiro_realtime/app/state/view_status.dart';
-import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
-import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
-import 'package:wiro_realtime/core/models/wiro_run_result.dart';
-import 'package:wiro_realtime/core/network/wiro_api_client.dart';
-import 'package:wiro_realtime/core/network/wiro_failure.dart';
-import 'package:wiro_realtime/core/network/wiro_request_cancellation.dart';
-import 'package:wiro_realtime/core/realtime/realtime_event.dart';
-import 'package:wiro_realtime/core/realtime/realtime_session.dart';
+import 'package:wiro_realtime/core/models/model_parameter_values.dart';
+import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
-import 'package:wiro_realtime/core/realtime/realtime_session_metrics.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
+import 'package:wiro_realtime/features/speech_to_text/service/transcription_session_controller.dart';
+import 'package:wiro_realtime/features/speech_to_text/service/transcription_session_snapshot.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/speech_to_text_view_model.dart';
 
 void main() {
-  test('runs Voxtral and streams prefixed PCM after readiness', () async {
-    final dependencies = SttTestDependencies();
-    final viewModel = dependencies.createViewModel();
+  ({
+    FakeTranscriptionSessionController controller,
+    SpeechToTextViewModel viewModel,
+  })
+  build() {
+    final controller = FakeTranscriptionSessionController();
+    final viewModel = SpeechToTextViewModel(sessionService: controller);
+    addTearDown(viewModel.dispose);
+    return (controller: controller, viewModel: viewModel);
+  }
+
+  test('takes the selected model from the session', () {
+    final harness = build();
+
+    expect(harness.viewModel.state.selectedModel, harness.controller.model);
+  });
+
+  test('adopts a session that is already transcribing', () {
+    final controller = FakeTranscriptionSessionController()
+      ..snapshot = const TranscriptionSessionSnapshot(
+        sessionState: RealtimeSessionState.streaming,
+        transcript: 'in progress',
+      );
+
+    final viewModel = SpeechToTextViewModel(sessionService: controller);
     addTearDown(viewModel.dispose);
 
-    await viewModel.start();
-    dependencies.recorder.emit(Uint8List.fromList([1, 2, 3]));
-    await pumpEventQueue();
-
-    expect(
-      dependencies.audioSession.preparedProfiles,
-      [RealtimeAudioProfile.transcription],
-    );
-    expect(dependencies.apiClient.runCalls, 1);
-    expect(dependencies.apiClient.lastParameters, {
-      'transcriptionDelay': 'balanced',
-    });
-    expect(dependencies.session.sentAudio, [
-      [1, 2, 3],
-    ]);
     expect(viewModel.state.sessionState, RealtimeSessionState.streaming);
-    expect(viewModel.state.microphoneActive, isTrue);
+    expect(viewModel.state.transcript, 'in progress');
   });
 
-  test('replaces transcript with each authoritative output', () async {
-    final dependencies = SttTestDependencies();
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    await viewModel.start();
+  test('projects every snapshot field onto view state', () {
+    final harness = build();
 
-    dependencies.session
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world'));
-
-    expect(viewModel.state.transcript, 'Hello world');
-    expect(
-      viewModel.state.protocolEvents.where(
-        (event) => event == 'task_output',
-      ),
-      hasLength(2),
-    );
-  });
-
-  test('stop releases microphone and sends one session end', () async {
-    final dependencies = SttTestDependencies();
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    await viewModel.start();
-
-    final firstStop = viewModel.stop();
-    final secondStop = viewModel.stop();
-    await Future.wait([firstStop, secondStop]);
-
-    expect(dependencies.recorder.stopCalls, 1);
-    expect(dependencies.audioSession.deactivateCalls, 1);
-    expect(dependencies.session.sessionEndCalls, 1);
-    expect(dependencies.session.closeCalls, 1);
-    expect(viewModel.state.sessionState, RealtimeSessionState.completed);
-    expect(viewModel.state.microphoneActive, isFalse);
-  });
-
-  test('maps denied microphone permission without running a task', () async {
-    final dependencies = SttTestDependencies(
-      preparationResult: AudioPreparationResult.permissionDenied,
-    );
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-
-    await viewModel.start();
-
-    expect(dependencies.apiClient.runCalls, 0);
-    expect(viewModel.state.status, ViewStatus.error);
-    expect(viewModel.state.sessionState, RealtimeSessionState.failure);
-    expect(viewModel.state.errorMessage, isNotEmpty);
-  });
-
-  test('cancels a pending Run request during stop', () async {
-    final runCompleter = Completer<WiroRunResult>();
-    final dependencies = SttTestDependencies(
-      runCompleter: runCompleter,
-    );
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    final starting = viewModel.start();
-    await pumpEventQueue();
-
-    await viewModel.stop();
-    await starting;
-
-    expect(dependencies.apiClient.lastCancellation?.isCancelled, isTrue);
-    expect(dependencies.session.connectCalls, 0);
-    expect(viewModel.state.sessionState, RealtimeSessionState.completed);
-  });
-
-  test('terminates a Run result that arrives after stop', () async {
-    final runCompleter = Completer<WiroRunResult>();
-    final dependencies = SttTestDependencies(
-      runCompleter: runCompleter,
-      ignoreRunCancellation: true,
-    );
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    final starting = viewModel.start();
-    await pumpEventQueue();
-
-    final stopping = viewModel.stop();
-    runCompleter.complete(
-      const WiroRunResult(
-        taskId: 'orphan-task',
-        taskToken: 'orphan-token',
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(
+        status: ViewStatus.success,
+        sessionState: RealtimeSessionState.streaming,
+        elapsed: Duration(seconds: 7),
+        transcript: 'hello',
+        microphoneActive: true,
+        errorMessage: 'boom',
+        protocolEvents: ['first', 'second'],
       ),
     );
-    await Future.wait([starting, stopping]);
-    await pumpEventQueue();
 
-    expect(dependencies.apiClient.terminatedTaskIds, ['orphan-task']);
-    expect(dependencies.session.connectCalls, 0);
+    final state = harness.viewModel.state;
+    expect(state.status, ViewStatus.success);
+    expect(state.sessionState, RealtimeSessionState.streaming);
+    expect(state.elapsed, const Duration(seconds: 7));
+    expect(state.transcript, 'hello');
+    expect(state.microphoneActive, isTrue);
+    expect(state.errorMessage, 'boom');
+    expect(state.protocolEvents, ['first', 'second']);
   });
 
-  test('completes naturally after postprocess end', () async {
-    final dependencies = SttTestDependencies();
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    await viewModel.start();
-
-    dependencies.session
-      ..emit(
-        const RealtimeStatusEvent(RealtimeEventType.streamEnded),
-      )
-      ..emit(
-        const RealtimeStatusEvent(
-          RealtimeEventType.postprocessEnded,
-        ),
-      );
-    await pumpEventQueue();
-
-    expect(viewModel.state.sessionState, RealtimeSessionState.completed);
-    expect(viewModel.state.microphoneActive, isFalse);
-    expect(dependencies.recorder.stopCalls, 1);
-  });
-
-  test('rejects unexpected server audio for STT', () async {
-    final dependencies = SttTestDependencies();
-    final viewModel = dependencies.createViewModel();
-    addTearDown(viewModel.dispose);
-    await viewModel.start();
-
-    dependencies.session.emit(
-      RealtimeBinaryEvent(Uint8List.fromList([1, 2])),
+  test('clearing an error message propagates the null', () {
+    final harness = build();
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(errorMessage: 'boom'),
     );
-    await pumpEventQueue();
 
-    expect(viewModel.state.status, ViewStatus.error);
-    expect(viewModel.state.sessionState, RealtimeSessionState.failure);
-    expect(viewModel.state.errorMessage, isNot(contains('1, 2')));
+    harness.controller.publish(const TranscriptionSessionSnapshot());
+
+    expect(harness.viewModel.state.errorMessage, isNull);
   });
-}
 
-final class SttTestDependencies {
-  SttTestDependencies({
-    AudioPreparationResult preparationResult = AudioPreparationResult.ready,
-    Completer<WiroRunResult>? runCompleter,
-    bool ignoreRunCancellation = false,
-  }) : audioSession = FakeRealtimeAudioSession(preparationResult),
-       apiClient = FakeWiroApiClient(
-         runCompleter: runCompleter,
-         ignoreRunCancellation: ignoreRunCancellation,
-       );
+  test('a reveal request opens the protocol panel', () {
+    final harness = build();
 
-  final FakeRealtimeAudioSession audioSession;
-  final FakeWiroApiClient apiClient;
-  final FakePcmAudioRecorder recorder = FakePcmAudioRecorder();
-  final FakeRealtimeSession session = FakeRealtimeSession();
-  final RealtimeSessionGuard sessionGuard = RealtimeSessionGuard();
-
-  SpeechToTextViewModel createViewModel() {
-    return SpeechToTextViewModel(
-      audioSession: audioSession,
-      apiClient: apiClient,
-      sessionFactory: ({
-        required taskId,
-        required taskToken,
-      }) => session,
-      recorder: recorder,
-      sessionGuard: sessionGuard,
-      terminalTimeout: Duration.zero,
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
     );
-  }
-}
 
-final class FakeRealtimeAudioSession implements RealtimeAudioSession {
-  FakeRealtimeAudioSession(this.result);
-
-  final AudioPreparationResult result;
-  final List<RealtimeAudioProfile> preparedProfiles = [];
-  int deactivateCalls = 0;
-
-  @override
-  Stream<RealtimeAudioInterruption> get interruptions => const Stream.empty();
-
-  @override
-  Stream<void> get becomingNoisy => const Stream.empty();
-
-  @override
-  Stream<void> get routeChanges => const Stream.empty();
-
-  @override
-  Future<AudioPreparationResult> prepare(
-    RealtimeAudioProfile profile,
-  ) async {
-    preparedProfiles.add(profile);
-    return result;
-  }
-
-  @override
-  Future<void> deactivate() async {
-    deactivateCalls++;
-  }
-
-  @override
-  Future<bool> setSpeakerEnabled({required bool enabled}) async => true;
-
-  @override
-  Future<void> dispose() async {}
-}
-
-final class FakeWiroApiClient implements WiroApiClient {
-  FakeWiroApiClient({
-    this.runCompleter,
-    this.ignoreRunCancellation = false,
+    expect(harness.viewModel.state.protocolExpanded, isTrue);
   });
 
-  final Completer<WiroRunResult>? runCompleter;
-  final bool ignoreRunCancellation;
-  final List<String> terminatedTaskIds = [];
-  int runCalls = 0;
-  Map<String, Object?>? lastParameters;
-  WiroRequestCancellation? lastCancellation;
+  test('a collapsed panel stays closed while reveal holds', () {
+    final harness = build();
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
+    );
 
-  @override
-  WiroRequestCancellation createCancellation() {
-    return WiroRequestCancellation();
-  }
+    harness.viewModel.toggleProtocolPanel();
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(
+        revealProtocolPanel: true,
+        transcript: 'new state',
+      ),
+    );
 
-  @override
-  Future<WiroRunResult> runModel({
-    required ModelDefinition model,
-    required Map<String, Object?> parameters,
-    WiroRequestCancellation? cancellation,
-  }) async {
-    runCalls++;
-    lastParameters = parameters;
-    lastCancellation = cancellation;
-    final pendingRun = runCompleter;
-    if (pendingRun == null) {
-      return const WiroRunResult(
-        taskId: 'task-id',
-        taskToken: 'task-token',
-      );
-    }
-    if (ignoreRunCancellation) {
-      return pendingRun.future;
-    }
-    return Future.any<WiroRunResult>([
-      pendingRun.future,
-      cancellation!.whenCancelled.then<WiroRunResult>((_) {
-        throw const WiroCancellationFailure();
-      }),
-    ]);
-  }
+    expect(harness.viewModel.state.protocolExpanded, isFalse);
+  });
 
-  @override
-  Future<void> terminateTaskBestEffort({
-    required String taskId,
-    required String taskToken,
-  }) async {
-    terminatedTaskIds.add(taskId);
-  }
+  test('a later failure reopens a panel the user closed', () {
+    final harness = build();
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
+    );
+    harness.viewModel.toggleProtocolPanel();
+
+    harness.controller.publish(const TranscriptionSessionSnapshot());
+    harness.controller.publish(
+      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
+    );
+
+    expect(harness.viewModel.state.protocolExpanded, isTrue);
+  });
+
+  test('commands are delegated to the session', () async {
+    final harness = build();
+
+    await harness.viewModel.start();
+    await harness.viewModel.stop();
+    harness.viewModel.clearTranscript();
+
+    expect(harness.controller.startCalls, 1);
+    expect(harness.controller.stopCalls, 1);
+    expect(harness.controller.clearCalls, 1);
+  });
+
+  test('toggling the panel does not call the session', () {
+    final harness = build();
+
+    harness.viewModel.toggleProtocolPanel();
+
+    expect(harness.viewModel.state.protocolExpanded, isTrue);
+    expect(harness.controller.commandCalls, 0);
+  });
+
+  test('dispose releases the session and stops listening', () {
+    final controller = FakeTranscriptionSessionController();
+
+    SpeechToTextViewModel(sessionService: controller).dispose();
+    controller.publish(
+      const TranscriptionSessionSnapshot(transcript: 'late'),
+    );
+
+    expect(controller.disposeCalls, 1);
+    expect(controller.hasListeners, isFalse);
+  });
 }
 
-final class FakePcmAudioRecorder implements PcmAudioRecorder {
-  StreamController<Uint8List>? _controller;
-  bool _recording = false;
-  bool _muted = false;
+final class FakeTranscriptionSessionController
+    implements TranscriptionSessionController {
+  final StreamController<TranscriptionSessionSnapshot> _snapshots =
+      StreamController<TranscriptionSessionSnapshot>.broadcast(sync: true);
 
   int startCalls = 0;
   int stopCalls = 0;
+  int clearCalls = 0;
   int disposeCalls = 0;
 
-  @override
-  bool get isRecording => _recording;
+  int get commandCalls => startCalls + stopCalls + clearCalls;
+
+  bool get hasListeners => _snapshots.hasListener;
 
   @override
-  bool get isMuted => _muted;
+  TranscriptionSessionSnapshot snapshot = const TranscriptionSessionSnapshot();
 
   @override
-  int get mutedSourceBuffers => 0;
+  Stream<TranscriptionSessionSnapshot> get snapshots => _snapshots.stream;
 
   @override
-  int get queueHighWaterMarkInChunks => 0;
+  ModelDefinition get model => WiroModelCatalog.voxtralMiniRealtime;
 
   @override
-  Future<Stream<Uint8List>> start(PcmCaptureProfile profile) async {
+  late final ModelParameterValues parameters = ModelParameterValues(
+    model.firstPassFields,
+  );
+
+  @override
+  final RealtimeSessionGuard sessionGuard = RealtimeSessionGuard();
+
+  @override
+  Future<void> start() async {
     startCalls++;
-    _recording = true;
-    _controller = StreamController<Uint8List>.broadcast(sync: true);
-    return _controller!.stream;
-  }
-
-  @override
-  void setMuted({required bool muted}) {
-    _muted = muted;
   }
 
   @override
   Future<void> stop() async {
-    if (!_recording) {
-      return;
-    }
     stopCalls++;
-    _recording = false;
-    await _controller?.close();
-    _controller = null;
+  }
+
+  @override
+  void clearTranscript() {
+    clearCalls++;
   }
 
   @override
   Future<void> dispose() async {
     disposeCalls++;
-    await stop();
   }
 
-  void emit(Uint8List bytes) {
-    _controller?.add(bytes);
-  }
-}
-
-final class FakeRealtimeSession implements RealtimeSessionClient {
-  final StreamController<RealtimeEvent> _eventsController =
-      StreamController<RealtimeEvent>.broadcast(sync: true);
-  final List<List<int>> sentAudio = [];
-
-  int connectCalls = 0;
-  int sessionEndCalls = 0;
-  int closeCalls = 0;
-  bool _ready = false;
-  bool _closed = false;
-
-  @override
-  Stream<RealtimeEvent> get events => _eventsController.stream;
-
-  @override
-  bool get isReady => _ready && !_closed;
-
-  @override
-  bool get isClosed => _closed;
-
-  @override
-  RealtimeSessionMetrics get metrics => const RealtimeSessionMetrics.empty();
-
-  @override
-  Future<void> connect() async {
-    connectCalls++;
-    _ready = true;
-  }
-
-  @override
-  bool sendAudio(Uint8List pcmBytes) {
-    if (!isReady) {
-      return false;
-    }
-    sentAudio.add(List<int>.from(pcmBytes));
-    return true;
-  }
-
-  @override
-  void sendSessionEnd() {
-    if (_closed || sessionEndCalls > 0) {
-      return;
-    }
-    sessionEndCalls++;
-    emit(
-      const RealtimeStatusEvent(
-        RealtimeEventType.postprocessEnded,
-      ),
-    );
-  }
-
-  @override
-  Future<void> stop() async {
-    sendSessionEnd();
-    await close();
-  }
-
-  @override
-  Future<void> close() async {
-    if (_closed) {
-      return;
-    }
-    closeCalls++;
-    _closed = true;
-    _ready = false;
-  }
-
-  void emit(RealtimeEvent event) {
-    _eventsController.add(event);
+  void publish(TranscriptionSessionSnapshot next) {
+    snapshot = next;
+    _snapshots.add(next);
   }
 }
