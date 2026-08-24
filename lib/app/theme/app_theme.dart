@@ -1,0 +1,189 @@
+import 'package:flutter/material.dart';
+import 'package:wiro_realtime/app/layout/project_radius.dart';
+import 'package:wiro_realtime/app/theme/app_color_scheme.dart';
+import 'package:wiro_realtime/app/theme/app_colors.dart';
+
+abstract final class AppTheme {
+  static ThemeData get light {
+    final baseTheme = ThemeData(
+      colorScheme: AppColorScheme.light,
+      scaffoldBackgroundColor: AppColors.background,
+      useMaterial3: true,
+    );
+
+    return baseTheme.copyWith(
+      appBarTheme: const AppBarTheme(
+        backgroundColor: AppColors.background,
+        foregroundColor: AppColors.ink,
+        centerTitle: false,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        surfaceTintColor: Colors.transparent,
+      ),
+      cardTheme: const CardThemeData(
+        color: AppColors.surface,
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        shape: RoundedRectangleBorder(
+          side: BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+      ),
+      dividerTheme: const DividerThemeData(
+        color: AppColors.border,
+        thickness: 1,
+        space: 1,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return AppColors.backgroundStone;
+            }
+            if (states.contains(WidgetState.hovered)) {
+              return AppColors.inkHover;
+            }
+            return AppColors.ink;
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((states) {
+            if (states.contains(WidgetState.disabled)) {
+              return AppColors.inkDisabled;
+            }
+            return AppColors.onDark;
+          }),
+          elevation: const WidgetStatePropertyAll(0),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          ),
+          shape: const WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(
+                Radius.circular(ProjectRadius.button),
+              ),
+            ),
+          ),
+        ),
+      ),
+      outlinedButtonTheme: const OutlinedButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(AppColors.ink),
+          padding: WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+          ),
+          side: WidgetStatePropertyAll(
+            BorderSide(color: AppColors.borderStrong),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(
+                Radius.circular(ProjectRadius.button),
+              ),
+            ),
+          ),
+        ),
+      ),
+      textButtonTheme: const TextButtonThemeData(
+        style: ButtonStyle(
+          foregroundColor: WidgetStatePropertyAll(AppColors.greenText),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.all(
+                Radius.circular(ProjectRadius.button),
+              ),
+            ),
+          ),
+        ),
+      ),
+      inputDecorationTheme: const InputDecorationTheme(
+        filled: true,
+        fillColor: AppColors.surface,
+        labelStyle: TextStyle(color: AppColors.inkMuted),
+        floatingLabelStyle: TextStyle(color: AppColors.greenText),
+        enabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.borderMedium),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+        disabledBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.border),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.green, width: 1.5),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.danger),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderSide: BorderSide(color: AppColors.danger, width: 1.5),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.control),
+          ),
+        ),
+      ),
+      navigationBarTheme: const NavigationBarThemeData(
+        backgroundColor: AppColors.backgroundWarm,
+        indicatorColor: AppColors.greenContainer,
+        elevation: 0,
+        surfaceTintColor: Colors.transparent,
+        iconTheme: WidgetStatePropertyAll(
+          IconThemeData(color: AppColors.inkMuted),
+        ),
+        labelTextStyle: WidgetStatePropertyAll(
+          TextStyle(
+            color: AppColors.inkSecondary,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ),
+      chipTheme: baseTheme.chipTheme.copyWith(
+        backgroundColor: AppColors.backgroundWarm,
+        selectedColor: AppColors.greenContainer,
+        checkmarkColor: AppColors.greenText,
+        side: const BorderSide(color: AppColors.borderMedium),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.chip),
+          ),
+        ),
+      ),
+      textTheme: baseTheme.textTheme.copyWith(
+        headlineSmall: baseTheme.textTheme.headlineSmall?.copyWith(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.4,
+        ),
+        titleLarge: baseTheme.textTheme.titleLarge?.copyWith(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.3,
+        ),
+        titleMedium: baseTheme.textTheme.titleMedium?.copyWith(
+          color: AppColors.ink,
+          fontWeight: FontWeight.w600,
+        ),
+        bodyLarge: baseTheme.textTheme.bodyLarge?.copyWith(
+          color: AppColors.inkSecondary,
+        ),
+        bodyMedium: baseTheme.textTheme.bodyMedium?.copyWith(
+          color: AppColors.inkSecondary,
+        ),
+        bodySmall: baseTheme.textTheme.bodySmall?.copyWith(
+          color: AppColors.inkMuted,
+        ),
+      ),
+    );
+  }
+}
