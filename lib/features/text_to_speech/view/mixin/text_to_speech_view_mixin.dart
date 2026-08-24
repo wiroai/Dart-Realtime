@@ -10,6 +10,7 @@ import 'package:wiro_realtime/core/network/wiro_http_client.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/core/realtime/web_socket_realtime_socket_client.dart';
+import 'package:wiro_realtime/features/text_to_speech/service/text_to_speech_session_service.dart';
 import 'package:wiro_realtime/features/text_to_speech/view/text_to_speech_view.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/text_to_speech_view_model.dart';
 
@@ -23,21 +24,23 @@ mixin TextToSpeechViewMixin on State<TextToSpeechView> {
     super.initState();
     _httpClient = DioWiroHttpClient();
     textToSpeechViewModel = TextToSpeechViewModel(
-      audioSession: widget.audioSession,
-      apiClient: DefaultWiroApiClient(
-        _httpClient,
-        WiroAuthHeaders(credentials: widget.credentials),
+      sessionService: TextToSpeechSessionService(
+        audioSession: widget.audioSession,
+        apiClient: DefaultWiroApiClient(
+          _httpClient,
+          WiroAuthHeaders(credentials: widget.credentials),
+        ),
+        sessionFactory: ({required taskId, required taskToken}) =>
+            RealtimeSession(
+              socketClient: WebSocketRealtimeSocketClient(),
+              taskId: taskId,
+              taskToken: taskToken,
+            ),
+        player: QueuedPcmAudioPlayer(
+          AudioStreamPcmPlaybackSink(),
+        ),
+        sessionGuard: widget.sessionGuard,
       ),
-      sessionFactory: ({required taskId, required taskToken}) =>
-          RealtimeSession(
-            socketClient: WebSocketRealtimeSocketClient(),
-            taskId: taskId,
-            taskToken: taskToken,
-          ),
-      player: QueuedPcmAudioPlayer(
-        AudioStreamPcmPlaybackSink(),
-      ),
-      sessionGuard: widget.sessionGuard,
     );
     _appLifecycleListener = AppLifecycleListener(
       onHide: _stopActiveSession,

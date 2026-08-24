@@ -1,13 +1,12 @@
 import 'package:equatable/equatable.dart';
 import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
-import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
 final class TextToSpeechState extends Equatable {
   const TextToSpeechState({
+    required this.selectedModel,
     this.status = ViewStatus.initial,
-    this.selectedModel = WiroModelCatalog.mossTtsRealtime,
     this.sessionState = RealtimeSessionState.idle,
     this.elapsed = Duration.zero,
     this.isPlaying = false,
