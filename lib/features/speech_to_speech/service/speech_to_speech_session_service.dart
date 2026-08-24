@@ -43,6 +43,8 @@ final class SpeechToSpeechSessionService
     required this.sessionGuard,
     this.model = WiroModelCatalog.gptRealtimeMini,
     this.terminalTimeout = const Duration(seconds: 3),
+    this.maxRetryAttempts = 2,
+    this.retryBaseDelay = const Duration(milliseconds: 500),
   }) : parameters = ModelParameterValues(model.firstPassFields) {
     _routeWatcher = RealtimeAudioRouteWatcher(
       audioSession: audioSession,
@@ -59,6 +61,8 @@ final class SpeechToSpeechSessionService
   final PcmAudioRecorder recorder;
   final PcmAudioPlayer player;
   final Duration terminalTimeout;
+  final int maxRetryAttempts;
+  final Duration retryBaseDelay;
 
   @override
   final RealtimeSessionGuard sessionGuard;
@@ -99,7 +103,9 @@ final class SpeechToSpeechSessionService
   Future<void>? _naturalCompletion;
   Future<void>? _startOperation;
   Future<void>? _stopOperation;
+  Future<void>? _changeVoiceOperation;
   bool _naturalCompletionRunning = false;
+  int _retryAttempt = 0;
 
   @override
   Stream<ConversationSessionSnapshot> get snapshots => _snapshots.stream;
@@ -129,7 +135,8 @@ final class SpeechToSpeechSessionService
       return Future<void>.value();
     }
     _sessionLease = lease;
-    final operation = _start();
+    _retryAttempt = 0;
+    final operation = _start(isRetry: false);
     _startOperation = operation;
     return operation.whenComplete(() {
       if (identical(_startOperation, operation)) {
@@ -138,9 +145,11 @@ final class SpeechToSpeechSessionService
     });
   }
 
-  Future<void> _start() async {
+  Future<void> _start({required bool isRetry}) async {
     final operationId = _guard.begin();
-    _protocolLog.clear();
+    if (!isRetry) {
+      _protocolLog.clear();
+    }
     _publish(
       _snapshot.copyWith(
         status: ViewStatus.loading,
@@ -255,6 +264,7 @@ final class SpeechToSpeechSessionService
           ),
         ),
       );
+      _retryAttempt = 0;
     } on Object catch (error) {
       if (_guard.isCurrent(operationId)) {
         await _fail(operationId, error);
@@ -342,6 +352,142 @@ final class SpeechToSpeechSessionService
         ),
       ),
     );
+  }
+
+  @override
+  Future<void> changeVoice(String voice) {
+    if (_guard.isDisposed) {
+      return Future<void>.value();
+    }
+    if (!_snapshot.sessionState.isActive || _snapshot.isChangingVoice) {
+      return _changeVoiceOperation ?? Future<void>.value();
+    }
+    final currentVoice = parameters.require('voice').value;
+    if (currentVoice == voice) {
+      return Future<void>.value();
+    }
+    parameters.require('voice').value = voice;
+    final operation = _changeVoice();
+    _changeVoiceOperation = operation;
+    return operation.whenComplete(() {
+      if (identical(_changeVoiceOperation, operation)) {
+        _changeVoiceOperation = null;
+      }
+    });
+  }
+
+  Future<void> _changeVoice() async {
+    final operationId = _guard.begin();
+    final preservedUserTranscript = _snapshot.userTranscript;
+    final preservedAiTranscript = _snapshot.aiTranscript;
+    _publish(
+      _snapshot.copyWith(
+        status: ViewStatus.loading,
+        sessionState: RealtimeSessionState.creatingTask,
+        isChangingVoice: true,
+        microphoneActive: false,
+        protocolEvents: _protocolLog.add('voice_change_started'),
+      ),
+    );
+
+    try {
+      await _stopCapture();
+      player.flush();
+      await _closeActiveSessionForVoiceChange();
+
+      if (!_guard.isCurrent(operationId)) {
+        return;
+      }
+
+      final runResult = await _taskLauncher.launch(
+        model: model,
+        parameters: parameters.requestSnapshot(),
+        isStillWanted: () => _guard.isCurrent(operationId),
+      );
+      if (runResult == null) {
+        return;
+      }
+
+      final session = sessionFactory(
+        taskId: runResult.taskId,
+        taskToken: runResult.taskToken,
+      );
+      _session = session;
+      _terminalCompleter = Completer<void>();
+      _naturalCompletion = null;
+      _naturalCompletionRunning = false;
+      _playbackCoordinator.reset();
+      _eventSubscription = session.events.listen(
+        (event) => _handleEvent(event, operationId),
+        onError: (Object error) => _handleEventError(error, operationId),
+        onDone: () => _handleEventStreamDone(operationId),
+      );
+      _publish(
+        _snapshot.copyWith(
+          sessionState: RealtimeSessionState.connectingSocket,
+          userTranscript: preservedUserTranscript,
+          aiTranscript: preservedAiTranscript,
+        ),
+      );
+      final connection = session.connect();
+      await Future<void>.delayed(Duration.zero);
+      if (_guard.isCurrent(operationId)) {
+        _publish(
+          _snapshot.copyWith(
+            sessionState: RealtimeSessionState.waitingForStream,
+          ),
+        );
+      }
+      await connection;
+      if (!_guard.isCurrent(operationId)) {
+        await session.close();
+        return;
+      }
+
+      final pcmStream = await recorder.start(PcmCaptureProfile.conversation);
+      if (!_guard.isCurrent(operationId)) {
+        await recorder.stop();
+        await session.close();
+        return;
+      }
+      if (!player.isPlaying) {
+        await player.start();
+      }
+      _pcmSubscription = pcmStream.listen(
+        (chunk) => _sendPcm(chunk, operationId),
+        onError: (Object error) => _handleAudioError(error, operationId),
+      );
+      _startElapsedTimer(operationId);
+      _publish(
+        _snapshot.copyWith(
+          status: ViewStatus.success,
+          sessionState: RealtimeSessionState.streaming,
+          isChangingVoice: false,
+          microphoneActive: !_snapshot.muted,
+          protocolEvents: _protocolLog.add('voice_change_completed'),
+        ),
+      );
+    } on Object catch (error) {
+      if (_guard.isCurrent(operationId)) {
+        await _fail(operationId, error);
+      }
+    }
+  }
+
+  Future<void> _closeActiveSessionForVoiceChange() async {
+    _taskLauncher.cancelPendingRequest();
+    final session = _session;
+    if (session != null && !session.isClosed) {
+      session.sendSessionEnd();
+      await session.close();
+    }
+    await _eventSubscription?.cancel();
+    _eventSubscription = null;
+    _session = null;
+    _terminalCompleter = null;
+    _naturalCompletion = null;
+    _naturalCompletionRunning = false;
+    _taskLauncher.terminateBestEffort();
   }
 
   @override
@@ -558,6 +704,7 @@ final class SpeechToSpeechSessionService
     if (!_guard.isCurrent(operationId)) {
       return;
     }
+    final shouldRetry = _shouldRetry(error);
     final failureId = _guard.begin();
     _taskLauncher
       ..terminateBestEffort()
@@ -573,14 +720,38 @@ final class SpeechToSpeechSessionService
     _terminalCompleter = null;
     _naturalCompletion = null;
     _naturalCompletionRunning = false;
-    _releaseLease();
     if (!_guard.isCurrent(failureId)) {
       return;
     }
+    if (shouldRetry) {
+      _retryAttempt++;
+      _publish(
+        _snapshot.copyWith(
+          status: ViewStatus.loading,
+          sessionState: RealtimeSessionState.creatingTask,
+          isChangingVoice: false,
+          microphoneActive: false,
+          errorMessage: null,
+          revealProtocolPanel: false,
+          protocolEvents: _protocolLog.add(
+            'retry_scheduled:$_retryAttempt/$maxRetryAttempts',
+          ),
+        ),
+      );
+      await Future<void>.delayed(_retryDelay);
+      if (!_guard.isCurrent(failureId)) {
+        return;
+      }
+      _appendProtocolEvent('retry_started:$_retryAttempt');
+      await _start(isRetry: true);
+      return;
+    }
+    _releaseLease();
     _publish(
       _snapshot.copyWith(
         status: ViewStatus.error,
         sessionState: RealtimeSessionState.failure,
+        isChangingVoice: false,
         microphoneActive: false,
         errorMessage: _failureMapper.messageFor(error),
         revealProtocolPanel: true,
@@ -589,6 +760,27 @@ final class SpeechToSpeechSessionService
         ),
       ),
     );
+  }
+
+  bool _shouldRetry(Object error) {
+    if (_snapshot.isChangingVoice || _retryAttempt >= maxRetryAttempts) {
+      return false;
+    }
+    return switch (error) {
+      WiroServerFailure() ||
+      WiroNetworkFailure() ||
+      WiroTimeoutFailure() ||
+      WiroSocketFailure() ||
+      WiroSocketConnectTimeoutFailure() ||
+      WiroReadyTimeoutFailure() ||
+      AudioFailure() => true,
+      _ => false,
+    };
+  }
+
+  Duration get _retryDelay {
+    final multiplier = 1 << (_retryAttempt - 1);
+    return retryBaseDelay * multiplier;
   }
 
   Future<void> _stopCapture() async {

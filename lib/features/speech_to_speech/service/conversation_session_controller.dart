@@ -32,6 +32,8 @@ abstract interface class ConversationSessionController {
 
   Future<void> stop();
 
+  Future<void> changeVoice(String voice);
+
   void setMuted({required bool muted});
 
   void setSpeakerEnabled({required bool enabled});

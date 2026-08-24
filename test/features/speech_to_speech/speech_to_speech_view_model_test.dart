@@ -217,6 +217,9 @@ final class FakeConversationSessionController
   }
 
   @override
+  Future<void> changeVoice(String voice) async {}
+
+  @override
   void setMuted({required bool muted}) {
     muteRequests.add(muted);
   }

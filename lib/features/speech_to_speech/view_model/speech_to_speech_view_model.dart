@@ -39,6 +39,8 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
 
   Future<void> stop() => sessionService.stop();
 
+  Future<void> changeVoice(String voice) => sessionService.changeVoice(voice);
+
   void muteChanged({required bool muted}) {
     sessionService.setMuted(muted: muted);
   }
@@ -72,6 +74,7 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
         microphoneActive: snapshot.microphoneActive,
         muted: snapshot.muted,
         speakerEnabled: snapshot.speakerEnabled,
+        isChangingVoice: snapshot.isChangingVoice,
         errorMessage: snapshot.errorMessage,
         protocolEvents: snapshot.protocolEvents,
         protocolExpanded: revealNow || state.protocolExpanded,

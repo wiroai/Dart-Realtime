@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
+import 'package:wiro_realtime/core/network/wiro_failure.dart';
 import 'package:wiro_realtime/core/realtime/realtime_event.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
@@ -289,6 +290,48 @@ void main() {
     expect(service.snapshot.status, ViewStatus.error);
     expect(service.snapshot.sessionState, RealtimeSessionState.failure);
   });
+
+  test('retries a transient start failure before publishing failure', () async {
+    final dependencies = ConversationTestDependencies(
+      runErrors: const [WiroNetworkFailure()],
+    );
+    final service = dependencies.createService(maxRetryAttempts: 2);
+    addTearDown(service.dispose);
+    final publishedStates = <RealtimeSessionState>[];
+    final subscription = service.snapshots.listen(
+      (snapshot) => publishedStates.add(snapshot.sessionState),
+    );
+    addTearDown(subscription.cancel);
+
+    await service.start();
+
+    expect(dependencies.apiClient.runCalls, 2);
+    expect(service.snapshot.sessionState, RealtimeSessionState.streaming);
+    expect(publishedStates, isNot(contains(RealtimeSessionState.failure)));
+    expect(service.snapshot.protocolEvents, contains('retry_started:1'));
+  });
+
+  test(
+    'publishes failure only after transient retries are exhausted',
+    () async {
+      final dependencies = ConversationTestDependencies(
+        runErrors: const [
+          WiroNetworkFailure(),
+          WiroNetworkFailure(),
+          WiroNetworkFailure(),
+        ],
+      );
+      final service = dependencies.createService(maxRetryAttempts: 2);
+      addTearDown(service.dispose);
+
+      await service.start();
+
+      expect(dependencies.apiClient.runCalls, 3);
+      expect(service.snapshot.status, ViewStatus.error);
+      expect(service.snapshot.sessionState, RealtimeSessionState.failure);
+      expect(service.snapshot.revealProtocolPanel, isTrue);
+    },
+  );
 
   test('stops an active session when audio is interrupted', () async {
     final dependencies = ConversationTestDependencies();

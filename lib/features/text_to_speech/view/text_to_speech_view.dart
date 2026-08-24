@@ -8,6 +8,7 @@ import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/features/realtime_home/view/widgets/model_parameter_form.dart';
 import 'package:wiro_realtime/features/realtime_home/view/widgets/protocol_event_panel.dart';
+import 'package:wiro_realtime/features/realtime_home/view/widgets/realtime_sliver_app_bar.dart';
 import 'package:wiro_realtime/features/realtime_home/view/widgets/session_controls.dart';
 import 'package:wiro_realtime/features/text_to_speech/view/mixin/text_to_speech_view_mixin.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/state/text_to_speech_state.dart';
@@ -35,6 +36,7 @@ class _TextToSpeechViewState extends State<TextToSpeechView>
   Widget build(BuildContext context) {
     return CustomScrollView(
       slivers: [
+        const RealtimeSliverAppBar(title: 'Speech'),
         SliverPadding(
           padding: ProjectPadding.page,
           sliver: SliverToBoxAdapter(
@@ -69,8 +71,6 @@ class TextToSpeechBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text('Speech'),
-        const SizedBox(height: 8),
         TtsModelSelector(
           viewModel: viewModel,
           selectedModel: state.selectedModel,

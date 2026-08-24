@@ -18,6 +18,7 @@ final class ConversationSessionSnapshot extends Equatable {
     this.microphoneActive = false,
     this.muted = false,
     this.speakerEnabled = true,
+    this.isChangingVoice = false,
     this.errorMessage,
     this.protocolEvents = const [],
     this.revealProtocolPanel = false,
@@ -31,6 +32,7 @@ final class ConversationSessionSnapshot extends Equatable {
   final bool microphoneActive;
   final bool muted;
   final bool speakerEnabled;
+  final bool isChangingVoice;
   final String? errorMessage;
   final List<String> protocolEvents;
   final bool revealProtocolPanel;
@@ -44,6 +46,7 @@ final class ConversationSessionSnapshot extends Equatable {
     bool? microphoneActive,
     bool? muted,
     bool? speakerEnabled,
+    bool? isChangingVoice,
     Object? errorMessage = _unset,
     List<String>? protocolEvents,
     bool? revealProtocolPanel,
@@ -57,6 +60,7 @@ final class ConversationSessionSnapshot extends Equatable {
       microphoneActive: microphoneActive ?? this.microphoneActive,
       muted: muted ?? this.muted,
       speakerEnabled: speakerEnabled ?? this.speakerEnabled,
+      isChangingVoice: isChangingVoice ?? this.isChangingVoice,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
@@ -75,6 +79,7 @@ final class ConversationSessionSnapshot extends Equatable {
     microphoneActive,
     muted,
     speakerEnabled,
+    isChangingVoice,
     errorMessage,
     protocolEvents,
     revealProtocolPanel,

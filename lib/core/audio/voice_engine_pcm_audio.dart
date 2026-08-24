@@ -147,7 +147,6 @@ final class _VoiceChatAudioSessionConfig extends AudioSessionConfig {
          mode: AudioMode.voiceChat,
          options: const {
            AudioOption.allowBluetooth,
-           AudioOption.allowBluetoothA2DP,
            AudioOption.defaultToSpeaker,
          },
        );
@@ -158,7 +157,6 @@ final class _VoiceChatAudioSessionConfig extends AudioSessionConfig {
     'mode': 'voiceChat',
     'options': [
       'allowBluetooth',
-      'allowBluetoothA2DP',
       'defaultToSpeaker',
     ],
     'preferredBufferDuration': preferredBufferDuration,

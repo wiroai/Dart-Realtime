@@ -90,8 +90,7 @@ void main() {
 Future<void> _flush() => Future<void>.delayed(Duration.zero);
 
 final class _FakeRealtimeAudioSession implements RealtimeAudioSession {
-  final interruptionController =
-      StreamController<RealtimeAudioInterruption>();
+  final interruptionController = StreamController<RealtimeAudioInterruption>();
   final becomingNoisyController = StreamController<void>();
   final routeChangeController = StreamController<void>();
 

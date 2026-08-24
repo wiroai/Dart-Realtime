@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wiro_realtime/app/layout/project_radius.dart';
 import 'package:wiro_realtime/app/theme/app_color_scheme.dart';
 import 'package:wiro_realtime/app/theme/app_colors.dart';
+import 'package:wiro_realtime/app/theme/app_text_styles.dart';
 
 abstract final class AppTheme {
   static ThemeData get light {
@@ -159,11 +160,12 @@ abstract final class AppTheme {
           ),
         ),
       ),
+      // Only slots the wiro type scale has an opinion about are replaced
+      // outright. `bodyMedium` keeps its Material size because unstyled
+      // `Text` across the other two features resolves to it.
       textTheme: baseTheme.textTheme.copyWith(
-        headlineSmall: baseTheme.textTheme.headlineSmall?.copyWith(
+        headlineSmall: AppTextStyles.pageTitle.copyWith(
           color: AppColors.ink,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.4,
         ),
         titleLarge: baseTheme.textTheme.titleLarge?.copyWith(
           color: AppColors.ink,
@@ -174,14 +176,21 @@ abstract final class AppTheme {
           color: AppColors.ink,
           fontWeight: FontWeight.w600,
         ),
-        bodyLarge: baseTheme.textTheme.bodyLarge?.copyWith(
+        titleSmall: AppTextStyles.title.copyWith(color: AppColors.ink),
+        bodyLarge: AppTextStyles.pageSubtitle.copyWith(
           color: AppColors.inkSecondary,
         ),
         bodyMedium: baseTheme.textTheme.bodyMedium?.copyWith(
           color: AppColors.inkSecondary,
         ),
-        bodySmall: baseTheme.textTheme.bodySmall?.copyWith(
+        bodySmall: AppTextStyles.caption.copyWith(
           color: AppColors.inkMuted,
+        ),
+        labelSmall: AppTextStyles.eyebrow.copyWith(
+          color: AppColors.inkMuted,
+        ),
+        labelMedium: AppTextStyles.buttonSmall.copyWith(
+          color: AppColors.inkSecondary,
         ),
       ),
     );

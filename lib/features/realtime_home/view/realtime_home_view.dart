@@ -23,7 +23,8 @@ class _RealtimeHomeViewState extends State<RealtimeHomeView>
       valueListenable: realtimeHomeViewModel,
       builder: (context, state, _) {
         return Scaffold(
-          appBar: AppBar(title: const Text('Wiro Realtime')),
+          // No shared bar: each destination supplies its own sliver bar so
+          // it can own its title and its actions.
           body: IndexedStack(
             index: state.selectedIndex,
             children: [

@@ -23,16 +23,21 @@ import 'package:wiro_realtime/features/speech_to_speech/service/speech_to_speech
 final class ConversationTestDependencies {
   ConversationTestDependencies({
     AudioPreparationResult preparationResult = AudioPreparationResult.ready,
-  }) : audioSession = FakeRealtimeAudioSession(preparationResult);
+    List<Exception> runErrors = const [],
+  }) : audioSession = FakeRealtimeAudioSession(preparationResult),
+       apiClient = FakeWiroApiClient(runErrors: runErrors);
 
   final FakeRealtimeAudioSession audioSession;
-  final FakeWiroApiClient apiClient = FakeWiroApiClient();
+  final FakeWiroApiClient apiClient;
   final FakePcmAudioRecorder recorder = FakePcmAudioRecorder();
   final FakePcmAudioPlayer player = FakePcmAudioPlayer();
   final FakeRealtimeSession session = FakeRealtimeSession();
   final RealtimeSessionGuard sessionGuard = RealtimeSessionGuard();
 
-  SpeechToSpeechSessionService createService() {
+  SpeechToSpeechSessionService createService({
+    int maxRetryAttempts = 0,
+    Duration retryBaseDelay = Duration.zero,
+  }) {
     return SpeechToSpeechSessionService(
       audioSession: audioSession,
       apiClient: apiClient,
@@ -44,6 +49,8 @@ final class ConversationTestDependencies {
       player: player,
       sessionGuard: sessionGuard,
       terminalTimeout: Duration.zero,
+      maxRetryAttempts: maxRetryAttempts,
+      retryBaseDelay: retryBaseDelay,
     );
   }
 }
@@ -100,6 +107,10 @@ final class FakeRealtimeAudioSession implements RealtimeAudioSession {
 }
 
 final class FakeWiroApiClient implements WiroApiClient {
+  FakeWiroApiClient({required List<Exception> runErrors})
+    : _runErrors = List<Exception>.of(runErrors);
+
+  final List<Exception> _runErrors;
   int runCalls = 0;
   Map<String, Object?>? lastParameters;
 
@@ -116,6 +127,9 @@ final class FakeWiroApiClient implements WiroApiClient {
   }) async {
     runCalls++;
     lastParameters = parameters;
+    if (_runErrors.isNotEmpty) {
+      throw _runErrors.removeAt(0);
+    }
     return const WiroRunResult(
       taskId: 'task-id',
       taskToken: 'task-token',

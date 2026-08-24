@@ -13,6 +13,7 @@ class WiroRealtimeApp extends StatelessWidget {
     return MaterialApp(
       title: 'Wiro Realtime',
       theme: AppTheme.light,
+      debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.light,
       home: RealtimeHomeView(credentials: credentials),
     );

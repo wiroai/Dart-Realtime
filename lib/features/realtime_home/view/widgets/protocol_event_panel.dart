@@ -6,12 +6,16 @@ class ProtocolEventPanel extends StatelessWidget {
     required this.expanded,
     required this.events,
     required this.onToggle,
+    this.showLabel = 'Show protocol events',
+    this.hideLabel = 'Hide protocol events',
     super.key,
   });
 
   final bool expanded;
   final List<String> events;
   final VoidCallback onToggle;
+  final String showLabel;
+  final String hideLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -21,9 +25,7 @@ class ProtocolEventPanel extends StatelessWidget {
         TextButton(
           key: const ValueKey<String>('protocol-toggle'),
           onPressed: onToggle,
-          child: Text(
-            expanded ? 'Hide protocol events' : 'Show protocol events',
-          ),
+          child: Text(expanded ? hideLabel : showLabel),
         ),
         if (expanded && events.isEmpty)
           const Padding(
