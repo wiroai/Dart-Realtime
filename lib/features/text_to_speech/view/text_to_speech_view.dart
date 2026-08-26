@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
+import 'package:wiro_realtime/app/state/value_selector_builder.dart';
+import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
+import 'package:wiro_realtime/app/widgets/protocol_event_panel.dart';
+import 'package:wiro_realtime/app/widgets/realtime_sliver_app_bar.dart';
+import 'package:wiro_realtime/app/widgets/session_controls.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/model_parameter_form.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/protocol_event_panel.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/realtime_sliver_app_bar.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/session_controls.dart';
 import 'package:wiro_realtime/features/text_to_speech/view/mixin/text_to_speech_view_mixin.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/state/text_to_speech_state.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/text_to_speech_view_model.dart';
@@ -48,15 +49,7 @@ class _TextToSpeechViewState extends State<TextToSpeechView>
         SliverPadding(
           padding: ProjectPadding.page,
           sliver: SliverToBoxAdapter(
-            child: ValueListenableBuilder<TextToSpeechState>(
-              valueListenable: textToSpeechViewModel,
-              builder: (context, state, _) {
-                return TextToSpeechBody(
-                  viewModel: textToSpeechViewModel,
-                  state: state,
-                );
-              },
-            ),
+            child: TextToSpeechBody(viewModel: textToSpeechViewModel),
           ),
         ),
       ],
@@ -64,57 +57,100 @@ class _TextToSpeechViewState extends State<TextToSpeechView>
   }
 }
 
+/// Each section subscribes to the one value it draws, so the elapsed
+/// clock ticking does not redraw the form, and typing into the prompt
+/// does not redraw anything but the character count.
 class TextToSpeechBody extends StatelessWidget {
-  const TextToSpeechBody({
-    required this.viewModel,
-    required this.state,
-    super.key,
-  });
+  const TextToSpeechBody({required this.viewModel, super.key});
 
   final TextToSpeechViewModel viewModel;
-  final TextToSpeechState state;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        TtsModelSelector(
-          viewModel: viewModel,
-          selectedModel: state.selectedModel,
-          enabled: !state.sessionState.isActive,
-        ),
-        const SizedBox(height: 12),
-        ModelParameterForm(
-          key: ValueKey<String>(state.selectedModel.modelSlug),
-          fields: state.selectedModel.firstPassFields,
-          values: viewModel.parameters,
-          enabled: !state.sessionState.isActive,
+        ValueSelectorBuilder<TextToSpeechState, _ModelSelection>(
+          valueListenable: viewModel,
+          selector: (state) => (
+            model: state.selectedModel,
+            active: state.sessionState.isActive,
+          ),
+          builder: (context, selection) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              TtsModelSelector(
+                viewModel: viewModel,
+                selectedModel: selection.model,
+                enabled: !selection.active,
+              ),
+              const SizedBox(height: 12),
+              ModelParameterForm(
+                key: ValueKey<String>(selection.model.modelSlug),
+                fields: selection.model.firstPassFields,
+                values: viewModel.parameters,
+                enabled: !selection.active,
+              ),
+            ],
+          ),
         ),
         TtsCharacterCount(viewModel: viewModel),
-        SessionStatusLabel(sessionState: state.sessionState),
-        ElapsedTimeLabel(elapsed: state.elapsed),
-        Text(state.isPlaying ? 'Playing' : 'Idle'),
+        ValueSelectorBuilder<TextToSpeechState, RealtimeSessionState>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState,
+          builder: (context, sessionState) =>
+              SessionStatusLabel(sessionState: sessionState),
+        ),
+        ValueSelectorBuilder<TextToSpeechState, Duration>(
+          valueListenable: viewModel,
+          selector: (state) => state.elapsed,
+          builder: (context, elapsed) => ElapsedTimeLabel(elapsed: elapsed),
+        ),
+        ValueSelectorBuilder<TextToSpeechState, bool>(
+          valueListenable: viewModel,
+          selector: (state) => state.isPlaying,
+          builder: (context, playing) => Text(playing ? 'Playing' : 'Idle'),
+        ),
         const SizedBox(height: 8),
-        StartStopControls(
-          sessionState: state.sessionState,
-          startLabel: 'Play',
-          stopLabel: 'Stop',
-          onStart: viewModel.start,
-          onStop: viewModel.stop,
-          sessionGuard: viewModel.sessionGuard,
+        ValueSelectorBuilder<TextToSpeechState, RealtimeSessionState>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState,
+          builder: (context, sessionState) => StartStopControls(
+            sessionState: sessionState,
+            startLabel: 'Play',
+            stopLabel: 'Stop',
+            onStart: viewModel.start,
+            onStop: viewModel.stop,
+            sessionGuard: viewModel.sessionGuard,
+          ),
         ),
         const SizedBox(height: 12),
-        SanitizedErrorText(errorMessage: state.errorMessage),
-        ProtocolEventPanel(
-          expanded: state.protocolExpanded,
-          events: state.protocolEvents,
-          onToggle: viewModel.toggleProtocolPanel,
+        ValueSelectorBuilder<TextToSpeechState, String?>(
+          valueListenable: viewModel,
+          selector: (state) => state.errorMessage,
+          builder: (context, message) =>
+              SanitizedErrorText(errorMessage: message),
+        ),
+        ValueSelectorBuilder<TextToSpeechState, _PanelSelection>(
+          valueListenable: viewModel,
+          selector: (state) => (
+            expanded: state.protocolExpanded,
+            events: state.protocolEvents,
+          ),
+          builder: (context, panel) => ProtocolEventPanel(
+            expanded: panel.expanded,
+            events: panel.events,
+            onToggle: viewModel.toggleProtocolPanel,
+          ),
         ),
       ],
     );
   }
 }
+
+typedef _ModelSelection = ({ModelDefinition model, bool active});
+
+typedef _PanelSelection = ({bool expanded, List<String> events});
 
 class TtsModelSelector extends StatelessWidget {
   const TtsModelSelector({

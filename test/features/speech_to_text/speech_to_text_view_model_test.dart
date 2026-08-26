@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/model_parameter_values.dart';
 import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
@@ -23,10 +22,10 @@ void main() {
     return (controller: controller, viewModel: viewModel);
   }
 
-  test('takes the selected model from the session', () {
+  test('takes the fixed model from the session', () {
     final harness = build();
 
-    expect(harness.viewModel.state.selectedModel, harness.controller.model);
+    expect(harness.viewModel.model, harness.controller.model);
   });
 
   test('adopts a session that is already transcribing', () {
@@ -43,12 +42,11 @@ void main() {
     expect(viewModel.state.transcript, 'in progress');
   });
 
-  test('projects every snapshot field onto view state', () {
+  test('projects every drawn snapshot field onto view state', () {
     final harness = build();
 
     harness.controller.publish(
       const TranscriptionSessionSnapshot(
-        status: ViewStatus.success,
         sessionState: RealtimeSessionState.streaming,
         elapsed: Duration(seconds: 7),
         transcript: 'hello',
@@ -59,7 +57,6 @@ void main() {
     );
 
     final state = harness.viewModel.state;
-    expect(state.status, ViewStatus.success);
     expect(state.sessionState, RealtimeSessionState.streaming);
     expect(state.elapsed, const Duration(seconds: 7));
     expect(state.transcript, 'hello');

@@ -1,14 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
+import 'package:wiro_realtime/app/state/value_selector_builder.dart';
+import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
+import 'package:wiro_realtime/app/widgets/protocol_event_panel.dart';
+import 'package:wiro_realtime/app/widgets/realtime_sliver_app_bar.dart';
+import 'package:wiro_realtime/app/widgets/session_controls.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/model_parameter_form.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/protocol_event_panel.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/realtime_sliver_app_bar.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/session_controls.dart';
 import 'package:wiro_realtime/features/speech_to_text/view/mixin/speech_to_text_view_mixin.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/speech_to_text_view_model.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/state/speech_to_text_state.dart';
@@ -47,15 +48,7 @@ class _SpeechToTextViewState extends State<SpeechToTextView>
         SliverPadding(
           padding: ProjectPadding.page,
           sliver: SliverToBoxAdapter(
-            child: ValueListenableBuilder<SpeechToTextState>(
-              valueListenable: speechToTextViewModel,
-              builder: (context, state, _) {
-                return SpeechToTextBody(
-                  viewModel: speechToTextViewModel,
-                  state: state,
-                );
-              },
-            ),
+            child: SpeechToTextBody(viewModel: speechToTextViewModel),
           ),
         ),
       ],
@@ -63,66 +56,105 @@ class _SpeechToTextViewState extends State<SpeechToTextView>
   }
 }
 
+/// Each section subscribes to the one value it draws, so the transcript
+/// streaming in does not redraw the form, and the elapsed clock ticking
+/// does not redraw the transcript.
 class SpeechToTextBody extends StatelessWidget {
-  const SpeechToTextBody({
-    required this.viewModel,
-    required this.state,
-    super.key,
-  });
+  const SpeechToTextBody({required this.viewModel, super.key});
 
   final SpeechToTextViewModel viewModel;
-  final SpeechToTextState state;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FixedModelLabel(model: state.selectedModel),
+        FixedModelLabel(model: viewModel.model),
         const SizedBox(height: 12),
-        ModelParameterForm(
-          fields: state.selectedModel.firstPassFields,
-          values: viewModel.parameters,
-          enabled: !state.sessionState.isActive,
+        ValueSelectorBuilder<SpeechToTextState, bool>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState.isActive,
+          builder: (context, active) => ModelParameterForm(
+            fields: viewModel.model.firstPassFields,
+            values: viewModel.parameters,
+            enabled: !active,
+          ),
         ),
-        SessionStatusLabel(sessionState: state.sessionState),
-        ElapsedTimeLabel(elapsed: state.elapsed),
-        MicrophoneActivityLabel(
-          microphoneActive: state.microphoneActive,
+        ValueSelectorBuilder<SpeechToTextState, RealtimeSessionState>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState,
+          builder: (context, sessionState) =>
+              SessionStatusLabel(sessionState: sessionState),
+        ),
+        ValueSelectorBuilder<SpeechToTextState, Duration>(
+          valueListenable: viewModel,
+          selector: (state) => state.elapsed,
+          builder: (context, elapsed) => ElapsedTimeLabel(elapsed: elapsed),
+        ),
+        ValueSelectorBuilder<SpeechToTextState, bool>(
+          valueListenable: viewModel,
+          selector: (state) => state.microphoneActive,
+          builder: (context, active) =>
+              MicrophoneActivityLabel(microphoneActive: active),
         ),
         const SizedBox(height: 8),
-        StartStopControls(
-          sessionState: state.sessionState,
-          startLabel: 'Start',
-          stopLabel: 'Stop',
-          onStart: viewModel.start,
-          onStop: viewModel.stop,
-          sessionGuard: viewModel.sessionGuard,
-        ),
-        if (state.sessionState.isIdleLike)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton(
-              key: const ValueKey<String>('clear-transcript'),
-              onPressed: viewModel.clearTranscript,
-              child: const Text('Clear transcript'),
-            ),
+        ValueSelectorBuilder<SpeechToTextState, RealtimeSessionState>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState,
+          builder: (context, sessionState) => StartStopControls(
+            sessionState: sessionState,
+            startLabel: 'Start',
+            stopLabel: 'Stop',
+            onStart: viewModel.start,
+            onStop: viewModel.stop,
+            sessionGuard: viewModel.sessionGuard,
           ),
-        const SizedBox(height: 12),
-        Text(
-          state.transcript.isEmpty
-              ? 'Waiting for transcript.'
-              : state.transcript,
-          style: context.textTheme.headlineSmall,
+        ),
+        ValueSelectorBuilder<SpeechToTextState, bool>(
+          valueListenable: viewModel,
+          selector: (state) => state.sessionState.isIdleLike,
+          builder: (context, idle) => idle
+              ? Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton(
+                    key: const ValueKey<String>('clear-transcript'),
+                    onPressed: viewModel.clearTranscript,
+                    child: const Text('Clear transcript'),
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
         const SizedBox(height: 12),
-        SanitizedErrorText(errorMessage: state.errorMessage),
-        ProtocolEventPanel(
-          expanded: state.protocolExpanded,
-          events: state.protocolEvents,
-          onToggle: viewModel.toggleProtocolPanel,
+        ValueSelectorBuilder<SpeechToTextState, String>(
+          valueListenable: viewModel,
+          selector: (state) => state.transcript,
+          builder: (context, transcript) => Text(
+            transcript.isEmpty ? 'Waiting for transcript.' : transcript,
+            style: context.textTheme.headlineSmall,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ValueSelectorBuilder<SpeechToTextState, String?>(
+          valueListenable: viewModel,
+          selector: (state) => state.errorMessage,
+          builder: (context, message) =>
+              SanitizedErrorText(errorMessage: message),
+        ),
+        ValueSelectorBuilder<SpeechToTextState, _PanelSelection>(
+          valueListenable: viewModel,
+          selector: (state) => (
+            expanded: state.protocolExpanded,
+            events: state.protocolEvents,
+          ),
+          builder: (context, panel) => ProtocolEventPanel(
+            expanded: panel.expanded,
+            events: panel.events,
+            onToggle: viewModel.toggleProtocolPanel,
+          ),
         ),
       ],
     );
   }
 }
+
+typedef _PanelSelection = ({bool expanded, List<String> events});

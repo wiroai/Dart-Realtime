@@ -28,7 +28,7 @@ physical device is required: simulators have no usable microphone path.
 
 ```
 lib/
-  app/       shell, theme, layout tokens, config, base view model
+  app/       shell, theme, layout tokens, config, shared widgets
   core/      reusable Wiro plumbing — auth, network, realtime, audio, models
   features/  one folder per screen: view/, view_model/, service/
 ```
@@ -111,7 +111,9 @@ A new screen that hosts the conversation has to pass that flag too.
  animated across the swap, and the orb settling into a live session is
  the screen's whole story. Do not reintroduce per-stage panels.
 - Feature-first folders. A feature owns its `view/`, `view_model/` and
-  `service/`; shared code goes to `core/`.
+  `service/`. Shared plumbing goes to `core/`; widgets that more than one
+  feature draws go to `app/widgets/`. No feature imports another, except
+  the home shell mounting the three destinations.
 - Services never touch view state. They publish immutable snapshots, which
   is why the whole session lifecycle is testable without a widget tree.
 - Styling comes from `context.theme`, `context.textTheme`,

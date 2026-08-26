@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/model_parameter_values.dart';
 import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
@@ -30,12 +29,11 @@ void main() {
     expect(viewModel.state.isPlaying, isTrue);
   });
 
-  test('projects every snapshot field', () {
+  test('projects every drawn snapshot field', () {
     final harness = _build();
     harness.controller.publish(
       const SpeechSessionSnapshot(
         selectedModel: WiroModelCatalog.voxcpm2,
-        status: ViewStatus.success,
         sessionState: RealtimeSessionState.streaming,
         elapsed: Duration(seconds: 4),
         isPlaying: true,
@@ -46,7 +44,7 @@ void main() {
 
     final state = harness.viewModel.state;
     expect(state.selectedModel, WiroModelCatalog.voxcpm2);
-    expect(state.status, ViewStatus.success);
+    expect(state.sessionState, RealtimeSessionState.streaming);
     expect(state.elapsed, const Duration(seconds: 4));
     expect(state.isPlaying, isTrue);
     expect(state.errorMessage, 'error');

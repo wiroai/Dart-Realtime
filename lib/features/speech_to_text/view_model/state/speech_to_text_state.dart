@@ -1,12 +1,13 @@
 import 'package:equatable/equatable.dart';
-import 'package:wiro_realtime/app/state/view_status.dart';
-import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
+/// What the transcription screen actually draws.
+///
+/// The session's snapshot knows more; a field earns its place here by
+/// having a widget that rebuilds on it. The model is not a field at all,
+/// because this screen runs against one fixed model.
 final class SpeechToTextState extends Equatable {
   const SpeechToTextState({
-    required this.selectedModel,
-    this.status = ViewStatus.initial,
     this.sessionState = RealtimeSessionState.idle,
     this.elapsed = Duration.zero,
     this.transcript = '',
@@ -16,8 +17,6 @@ final class SpeechToTextState extends Equatable {
     this.protocolExpanded = false,
   });
 
-  final ViewStatus status;
-  final ModelDefinition selectedModel;
   final RealtimeSessionState sessionState;
   final Duration elapsed;
   final String transcript;
@@ -27,8 +26,6 @@ final class SpeechToTextState extends Equatable {
   final bool protocolExpanded;
 
   SpeechToTextState copyWith({
-    ViewStatus? status,
-    ModelDefinition? selectedModel,
     RealtimeSessionState? sessionState,
     Duration? elapsed,
     String? transcript,
@@ -38,8 +35,6 @@ final class SpeechToTextState extends Equatable {
     bool? protocolExpanded,
   }) {
     return SpeechToTextState(
-      status: status ?? this.status,
-      selectedModel: selectedModel ?? this.selectedModel,
       sessionState: sessionState ?? this.sessionState,
       elapsed: elapsed ?? this.elapsed,
       transcript: transcript ?? this.transcript,
@@ -54,8 +49,6 @@ final class SpeechToTextState extends Equatable {
 
   @override
   List<Object?> get props => [
-    status,
-    selectedModel,
     sessionState,
     elapsed,
     transcript,

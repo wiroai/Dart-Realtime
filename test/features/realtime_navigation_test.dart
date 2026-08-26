@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wiro_realtime/app/app.dart';
+import 'package:wiro_realtime/app/widgets/session_controls.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/session_controls.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_copy.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/speech_to_speech_view.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/voice_orb.dart';

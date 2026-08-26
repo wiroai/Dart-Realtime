@@ -4,9 +4,9 @@ import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
 import 'package:wiro_realtime/app/layout/project_radius.dart';
 import 'package:wiro_realtime/app/layout/project_spacing.dart';
+import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/model_parameter_values.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/model_parameter_form.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_copy.dart';
 
 /// Where the engineering parameters live.

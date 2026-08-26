@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/model_parameter_form.dart';
+import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
 
 mixin ModelTextValueFieldMixin on State<ModelTextValueField> {
   late final TextEditingController textController;

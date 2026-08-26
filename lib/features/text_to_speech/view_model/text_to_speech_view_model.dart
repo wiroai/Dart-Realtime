@@ -59,7 +59,6 @@ final class TextToSpeechViewModel extends BaseViewModel<TextToSpeechState> {
     _protocolPanelRevealed = snapshot.revealProtocolPanel;
     emit(
       state.copyWith(
-        status: snapshot.status,
         selectedModel: snapshot.selectedModel,
         sessionState: snapshot.sessionState,
         elapsed: snapshot.elapsed,

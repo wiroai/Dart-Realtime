@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:wiro_realtime/app/widgets/mixin/model_text_value_field_mixin.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/model_parameter_values.dart';
-import 'package:wiro_realtime/features/realtime_home/view/widgets/mixin/model_text_value_field_mixin.dart';
 
 class ModelParameterForm extends StatelessWidget {
   const ModelParameterForm({
