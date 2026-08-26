@@ -26,6 +26,7 @@ import 'package:wiro_realtime/core/realtime/session_elapsed_clock.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_barge_in.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_mic_pipeline.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_playback_coordinator.dart';
+import 'package:wiro_realtime/features/speech_to_speech/service/conversation_recovery_policy.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_transcript_parser.dart';
@@ -194,6 +195,12 @@ final class SpeechToSpeechSessionService
     noiseGate: noiseGate,
     stallTimeout: micStallTimeout,
   );
+  late final ConversationRecoveryPolicy _recovery = ConversationRecoveryPolicy(
+    maxRetryAttempts: maxRetryAttempts,
+    retryBaseDelay: retryBaseDelay,
+    autoRestartDelay: autoRestartDelay,
+    maxAutoRestarts: maxAutoRestarts,
+  );
   final RealtimeOperationGuard _guard = RealtimeOperationGuard();
   final ProtocolEventLog _protocolLog = ProtocolEventLog();
   final SessionElapsedClock _elapsedClock = SessionElapsedClock();
@@ -208,13 +215,10 @@ final class SpeechToSpeechSessionService
   Future<void>? _startOperation;
   Future<void>? _stopOperation;
   Future<void>? _relaunchOperation;
-  Timer? _autoRestartTimer;
   int _watchdogOperationId = 0;
   Timer? _graceTimer;
   DateTime? _suspendedAt;
-  int _autoRestartCycle = 0;
   bool _naturalCompletionRunning = false;
-  int _retryAttempt = 0;
 
   /// The parameter values the live task was created with.
   ///
@@ -238,7 +242,7 @@ final class SpeechToSpeechSessionService
     if (!_snapshot.sessionState.canStart) {
       return Future<void>.value();
     }
-    _cancelAutoRestart();
+    _recovery.cancelAutoRestart();
     final lease = sessionGuard.acquire(
       RealtimeSessionOwner.conversation,
     );
@@ -253,7 +257,7 @@ final class SpeechToSpeechSessionService
       return Future<void>.value();
     }
     _sessionLease = lease;
-    _retryAttempt = 0;
+    _recovery.resetRetries();
     final operation = _start(isRetry: false);
     _startOperation = operation;
     return operation.whenComplete(() {
@@ -367,7 +371,7 @@ final class SpeechToSpeechSessionService
   Future<void> _stop() async {
     final operationId = _guard.begin();
     _micPipeline.stopWatchdog();
-    _cancelAutoRestart();
+    _recovery.cancelAutoRestart();
     _bargeIn.cancelHold();
     _publish(
       _snapshot.copyWith(
@@ -495,7 +499,7 @@ final class SpeechToSpeechSessionService
     }
     final operationId = _guard.begin();
     _micPipeline.stopWatchdog();
-    _cancelAutoRestart();
+    _recovery.cancelAutoRestart();
     _bargeIn.cancelHold();
     _elapsedClock.stop();
     _taskLauncher.cancelPendingRequest();
@@ -908,7 +912,7 @@ final class SpeechToSpeechSessionService
   Future<void> dispose() async {
     _guard.dispose();
     _micPipeline.dispose();
-    _cancelAutoRestart();
+    _recovery.dispose();
     _cancelGraceTimer();
     _bargeIn.dispose();
     _taskLauncher.cancelPendingRequest();
@@ -944,8 +948,7 @@ final class SpeechToSpeechSessionService
       // Only a microphone chunk that actually reached the server proves
       // the rebuilt pipeline healthy; resetting the retry budget any
       // earlier would let a dead microphone reconnect forever.
-      _retryAttempt = 0;
-      _autoRestartCycle = 0;
+      _recovery.noteHealthy();
       // The orb and barge-in listen to the gated signal too, so the
       // television can neither light the waveform nor cut the assistant.
       voiceActivity.addUserChunk(processed.gated, level: processed.level);
@@ -1147,7 +1150,10 @@ final class SpeechToSpeechSessionService
     if (!_guard.isCurrent(operationId)) {
       return;
     }
-    final shouldRetry = _shouldRetry(error);
+    final shouldRetry = _recovery.shouldRetry(
+      error,
+      isReconfiguring: _snapshot.isReconfiguring,
+    );
     // A conversation that was already streaming lost its socket, not its
     // task: the server was mid-conversation and never heard a hang-up, so
     // the task is worth dialling back into. Anything that broke earlier —
@@ -1177,7 +1183,7 @@ final class SpeechToSpeechSessionService
       return;
     }
     if (shouldRetry) {
-      _retryAttempt++;
+      _recovery.noteRetryScheduled();
       _publish(
         _snapshot.copyWith(
           status: ViewStatus.loading,
@@ -1186,15 +1192,15 @@ final class SpeechToSpeechSessionService
           microphoneActive: false,
           errorMessage: null,
           protocolEvents: _protocolLog.add(
-            'retry_scheduled:$_retryAttempt/$maxRetryAttempts',
+            'retry_scheduled:${_recovery.retryAttempt}/$maxRetryAttempts',
           ),
         ),
       );
-      await Future<void>.delayed(_retryDelay);
+      await Future<void>.delayed(_recovery.nextRetryDelay);
       if (!_guard.isCurrent(failureId)) {
         return;
       }
-      _appendProtocolEvent('retry_started:$_retryAttempt');
+      _appendProtocolEvent('retry_started:${_recovery.retryAttempt}');
       if (canReuseTask) {
         await _relaunch('reconnect', reuseTask: true, prepareAudio: true);
       } else {
@@ -1216,7 +1222,7 @@ final class SpeechToSpeechSessionService
         ),
       ),
     );
-    if (_isRecoverable(error)) {
+    if (_recovery.isRecoverable(error)) {
       _scheduleAutoRestart();
     }
   }
@@ -1230,54 +1236,22 @@ final class SpeechToSpeechSessionService
   /// So does a backend that keeps refusing: [maxAutoRestarts] bounds the
   /// attempts, and the orb is worth more than another silent one.
   void _scheduleAutoRestart() {
-    if (_guard.isDisposed || _autoRestartCycle >= maxAutoRestarts) {
+    if (_guard.isDisposed) {
       return;
     }
-    _autoRestartTimer?.cancel();
-    final shift = _autoRestartCycle > 2 ? 2 : _autoRestartCycle;
-    _autoRestartCycle++;
-    _appendProtocolEvent('auto_restart_scheduled');
-    // The restart only fires while the screen still shows the state it
-    // was armed from; anything else means the user or a newer operation
-    // took over in the meantime.
     final armedState = _snapshot.sessionState;
-    _autoRestartTimer = Timer(autoRestartDelay * (1 << shift), () {
-      _autoRestartTimer = null;
+    final scheduled = _recovery.scheduleAutoRestart(() {
+      // Only fire while the screen still shows the state it was armed
+      // from; anything else means the user or a newer operation took
+      // over in the meantime.
       if (_guard.isDisposed || _snapshot.sessionState != armedState) {
         return;
       }
       unawaited(start());
     });
-  }
-
-  void _cancelAutoRestart() {
-    _autoRestartTimer?.cancel();
-    _autoRestartTimer = null;
-  }
-
-  bool _shouldRetry(Object error) {
-    if (_snapshot.isReconfiguring || _retryAttempt >= maxRetryAttempts) {
-      return false;
+    if (scheduled) {
+      _appendProtocolEvent('auto_restart_scheduled');
     }
-    return _isRecoverable(error);
-  }
-
-  bool _isRecoverable(Object error) {
-    return switch (error) {
-      WiroServerFailure() ||
-      WiroNetworkFailure() ||
-      WiroTimeoutFailure() ||
-      WiroSocketFailure() ||
-      WiroSocketConnectTimeoutFailure() ||
-      WiroReadyTimeoutFailure() ||
-      AudioFailure() => true,
-      _ => false,
-    };
-  }
-
-  Duration get _retryDelay {
-    final multiplier = 1 << (_retryAttempt - 1);
-    return retryBaseDelay * multiplier;
   }
 
   Future<void> _stopCapture() async {
