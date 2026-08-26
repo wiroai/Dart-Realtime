@@ -6,7 +6,6 @@ import 'package:wiro_realtime/app/state/view_status.dart';
 import 'package:wiro_realtime/core/audio/audio_failure.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_player.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
-import 'package:wiro_realtime/core/audio/pcm_level_meter.dart';
 import 'package:wiro_realtime/core/audio/pcm_noise_gate.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_route_watcher.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
@@ -25,6 +24,7 @@ import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/core/realtime/session_elapsed_clock.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_barge_in.dart';
+import 'package:wiro_realtime/features/speech_to_speech/service/conversation_mic_pipeline.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_playback_coordinator.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
@@ -189,6 +189,11 @@ final class SpeechToSpeechSessionService
     holdTimeout: interruptHoldTimeout,
     holdCooldown: interruptHoldCooldown,
   );
+  late final ConversationMicPipeline _micPipeline = ConversationMicPipeline(
+    onStall: _handleMicStall,
+    noiseGate: noiseGate,
+    stallTimeout: micStallTimeout,
+  );
   final RealtimeOperationGuard _guard = RealtimeOperationGuard();
   final ProtocolEventLog _protocolLog = ProtocolEventLog();
   final SessionElapsedClock _elapsedClock = SessionElapsedClock();
@@ -203,9 +208,8 @@ final class SpeechToSpeechSessionService
   Future<void>? _startOperation;
   Future<void>? _stopOperation;
   Future<void>? _relaunchOperation;
-  Timer? _micWatchdog;
-  DateTime _lastMicChunkAt = DateTime.fromMillisecondsSinceEpoch(0);
   Timer? _autoRestartTimer;
+  int _watchdogOperationId = 0;
   Timer? _graceTimer;
   DateTime? _suspendedAt;
   int _autoRestartCycle = 0;
@@ -362,7 +366,7 @@ final class SpeechToSpeechSessionService
 
   Future<void> _stop() async {
     final operationId = _guard.begin();
-    _stopMicWatchdog();
+    _micPipeline.stopWatchdog();
     _cancelAutoRestart();
     _bargeIn.cancelHold();
     _publish(
@@ -490,7 +494,7 @@ final class SpeechToSpeechSessionService
       return;
     }
     final operationId = _guard.begin();
-    _stopMicWatchdog();
+    _micPipeline.stopWatchdog();
     _cancelAutoRestart();
     _bargeIn.cancelHold();
     _elapsedClock.stop();
@@ -903,7 +907,7 @@ final class SpeechToSpeechSessionService
   @override
   Future<void> dispose() async {
     _guard.dispose();
-    _stopMicWatchdog();
+    _micPipeline.dispose();
     _cancelAutoRestart();
     _cancelGraceTimer();
     _bargeIn.dispose();
@@ -927,22 +931,12 @@ final class SpeechToSpeechSessionService
     if (!_guard.isCurrent(operationId)) {
       return;
     }
-    _lastMicChunkAt = DateTime.now();
-    final gate = noiseGate;
-    // While the assistant is audible the gate demands barge-in loudness,
-    // so speaker echo the AEC misses cannot reach the server and come
-    // back as a transcript the user never said.
-    final gated =
-        gate?.process(
-          chunk,
-          assistantAudible: voiceActivity.aiAudioPending,
-        ) ??
-        chunk;
-    // The gate measured the chunk on its way through; reusing that level
-    // spares a second RMS pass over the same bytes for every chunk.
-    final level = gate?.lastOutputLevel ?? pcmNormalizedLevel(chunk);
+    final processed = _micPipeline.process(
+      chunk,
+      assistantAudible: voiceActivity.aiAudioPending,
+    );
     try {
-      final sent = _session?.sendAudio(gated) ?? false;
+      final sent = _session?.sendAudio(processed.gated) ?? false;
       if (!sent) {
         unawaited(_fail(operationId, const WiroSocketFailure()));
         return;
@@ -954,7 +948,7 @@ final class SpeechToSpeechSessionService
       _autoRestartCycle = 0;
       // The orb and barge-in listen to the gated signal too, so the
       // television can neither light the waveform nor cut the assistant.
-      voiceActivity.addUserChunk(gated, level: level);
+      voiceActivity.addUserChunk(processed.gated, level: processed.level);
       _bargeIn.evaluate();
     } on Object catch (error) {
       unawaited(_fail(operationId, error));
@@ -1079,7 +1073,7 @@ final class SpeechToSpeechSessionService
       return;
     }
     _naturalCompletionRunning = true;
-    _stopMicWatchdog();
+    _micPipeline.stopWatchdog();
     _bargeIn.cancelHold();
     await _stopCapture();
     await player.complete();
@@ -1165,7 +1159,7 @@ final class SpeechToSpeechSessionService
         !(_terminalCompleter?.isCompleted ?? false) &&
         _snapshot.sessionState == RealtimeSessionState.streaming;
     final failureId = _guard.begin();
-    _stopMicWatchdog();
+    _micPipeline.stopWatchdog();
     _bargeIn.cancelHold();
     if (!canReuseTask) {
       _taskLauncher.terminateBestEffort();
@@ -1325,39 +1319,23 @@ final class SpeechToSpeechSessionService
   }
 
   void _startMicWatchdog(int operationId) {
-    _micWatchdog?.cancel();
-    _lastMicChunkAt = DateTime.now();
-    final tick = micStallTimeout ~/ 2 < const Duration(milliseconds: 100)
-        ? const Duration(milliseconds: 100)
-        : micStallTimeout ~/ 2;
-    _micWatchdog = Timer.periodic(
-      tick,
-      (_) => _checkMicStall(operationId),
-    );
+    _watchdogOperationId = operationId;
+    _micPipeline.startWatchdog();
   }
 
-  void _checkMicStall(int operationId) {
+  void _handleMicStall() {
+    final operationId = _watchdogOperationId;
     if (!_guard.isCurrent(operationId) ||
         _snapshot.sessionState != RealtimeSessionState.streaming) {
       return;
     }
     if (_snapshot.muted) {
-      // Muted capture legitimately delivers nothing; the stall clock only
-      // starts once the microphone is expected to speak again.
-      _lastMicChunkAt = DateTime.now();
+      _micPipeline.markAlive();
       return;
     }
-    if (DateTime.now().difference(_lastMicChunkAt) < micStallTimeout) {
-      return;
-    }
-    _stopMicWatchdog();
+    _micPipeline.stopWatchdog();
     _appendProtocolEvent('microphone_stalled');
     unawaited(_fail(operationId, const AudioCaptureFailure()));
-  }
-
-  void _stopMicWatchdog() {
-    _micWatchdog?.cancel();
-    _micWatchdog = null;
   }
 
   /// Counts on top of whatever the snapshot already holds, so a reconnect
