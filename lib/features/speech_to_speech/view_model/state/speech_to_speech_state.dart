@@ -1,88 +1,59 @@
 import 'package:equatable/equatable.dart';
-import 'package:wiro_realtime/app/state/view_status.dart';
-import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
+/// What the conversation screen actually draws.
+///
+/// The session's snapshot knows far more — transcripts, the clock, the
+/// protocol log — but the orb-only screen reads none of it, so none of it
+/// is projected here. A field earns its place by having a widget that
+/// rebuilds on it.
 final class SpeechToSpeechState extends Equatable {
   const SpeechToSpeechState({
-    required this.selectedModel,
-    this.status = ViewStatus.initial,
     this.sessionState = RealtimeSessionState.idle,
-    this.elapsed = Duration.zero,
-    this.userTranscript = '',
-    this.aiTranscript = '',
-    this.microphoneActive = false,
     this.muted = false,
-    this.speakerEnabled = true,
-    this.isChangingVoice = false,
+    this.isReconfiguring = false,
     this.errorMessage,
-    this.protocolEvents = const [],
-    this.protocolExpanded = false,
+    this.canOpenSystemSettings = false,
   });
 
-  final ViewStatus status;
-  final ModelDefinition selectedModel;
   final RealtimeSessionState sessionState;
-  final Duration elapsed;
-  final String userTranscript;
-  final String aiTranscript;
-  final bool microphoneActive;
   final bool muted;
-  final bool speakerEnabled;
-  final bool isChangingVoice;
+
+  /// True while the session is tearing down its task and building a new one
+  /// with the current parameters, without the user having hung up.
+  final bool isReconfiguring;
   final String? errorMessage;
-  final List<String> protocolEvents;
-  final bool protocolExpanded;
+
+  /// True when [errorMessage] describes something no retry can fix and the
+  /// system settings screen can.
+  final bool canOpenSystemSettings;
 
   SpeechToSpeechState copyWith({
-    ViewStatus? status,
-    ModelDefinition? selectedModel,
     RealtimeSessionState? sessionState,
-    Duration? elapsed,
-    String? userTranscript,
-    String? aiTranscript,
-    bool? microphoneActive,
     bool? muted,
-    bool? speakerEnabled,
-    bool? isChangingVoice,
+    bool? isReconfiguring,
     Object? errorMessage = _unset,
-    List<String>? protocolEvents,
-    bool? protocolExpanded,
+    bool? canOpenSystemSettings,
   }) {
     return SpeechToSpeechState(
-      status: status ?? this.status,
-      selectedModel: selectedModel ?? this.selectedModel,
       sessionState: sessionState ?? this.sessionState,
-      elapsed: elapsed ?? this.elapsed,
-      userTranscript: userTranscript ?? this.userTranscript,
-      aiTranscript: aiTranscript ?? this.aiTranscript,
-      microphoneActive: microphoneActive ?? this.microphoneActive,
       muted: muted ?? this.muted,
-      speakerEnabled: speakerEnabled ?? this.speakerEnabled,
-      isChangingVoice: isChangingVoice ?? this.isChangingVoice,
+      isReconfiguring: isReconfiguring ?? this.isReconfiguring,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
-      protocolEvents: protocolEvents ?? this.protocolEvents,
-      protocolExpanded: protocolExpanded ?? this.protocolExpanded,
+      canOpenSystemSettings:
+          canOpenSystemSettings ?? this.canOpenSystemSettings,
     );
   }
 
   @override
   List<Object?> get props => [
-    status,
-    selectedModel,
     sessionState,
-    elapsed,
-    userTranscript,
-    aiTranscript,
-    microphoneActive,
     muted,
-    speakerEnabled,
-    isChangingVoice,
+    isReconfiguring,
     errorMessage,
-    protocolEvents,
-    protocolExpanded,
+    canOpenSystemSettings,
   ];
 }
 

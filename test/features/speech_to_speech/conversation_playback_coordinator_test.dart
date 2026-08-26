@@ -76,9 +76,144 @@ void main() {
     expect(outcome.flushedPreviousTurn, isFalse);
     expect(player.flushes, isZero);
   });
+
+  test('interrupting flushes once and silences the rest of the turn', () {
+    coordinator.enqueue(_chunk(1));
+
+    expect(coordinator.interruptTurn(), isTrue);
+    expect(coordinator.interruptTurn(), isFalse);
+
+    final silenced = coordinator.enqueue(_chunk(2));
+
+    expect(player.flushes, 1);
+    expect(silenced.silencedChunk, isTrue);
+    expect(player.enqueued, [_chunk(1)]);
+  });
+
+  test('the turn after an interruption plays normally', () {
+    coordinator
+      ..enqueue(_chunk(1))
+      ..interruptTurn()
+      ..enqueue(_chunk(2))
+      ..markTurnFinished();
+
+    final outcome = coordinator.enqueue(_chunk(3));
+
+    expect(outcome.silencedChunk, isFalse);
+    expect(outcome.flushedPreviousTurn, isFalse);
+    expect(player.enqueued, [_chunk(1), _chunk(3)]);
+  });
+
+  test('interrupting a finished tail clears it without latching', () {
+    coordinator
+      ..enqueue(_chunk(1))
+      ..markTurnFinished();
+
+    expect(coordinator.interruptTurn(), isTrue);
+
+    final outcome = coordinator.enqueue(_chunk(2));
+
+    expect(outcome.silencedChunk, isFalse);
+    expect(outcome.flushedPreviousTurn, isFalse);
+    expect(player.flushes, 1);
+    expect(player.enqueued, [_chunk(1), _chunk(2)]);
+  });
+
+  test('a hold silences the player but keeps the turn resumable', () {
+    coordinator.enqueue(_secondLong(1));
+
+    expect(coordinator.holdTurn(), isTrue);
+    expect(coordinator.isHolding, isTrue);
+    expect(player.flushes, 1);
+
+    final resumed = coordinator.resumeHeldTurn();
+
+    expect(coordinator.isHolding, isFalse);
+    expect(resumed, hasLength(1));
+    // The heard head is trimmed away, so the resume continues instead of
+    // repeating; nearly the whole second is still unheard.
+    expect(resumed.single.length, lessThanOrEqualTo(48000));
+    expect(resumed.single.length, greaterThan(40000));
+    expect(player.enqueued, hasLength(2));
+  });
+
+  test('chunks arriving during a hold play only after the resume', () {
+    coordinator
+      ..enqueue(_secondLong(1))
+      ..holdTurn();
+
+    final held = coordinator.enqueue(_secondLong(2));
+
+    expect(held.heldChunk, isTrue);
+    expect(player.enqueued, hasLength(1));
+
+    final resumed = coordinator.resumeHeldTurn();
+
+    expect(resumed, hasLength(2));
+    expect(player.enqueued, hasLength(3));
+  });
+
+  test('committing a held turn discards its audio and latches', () {
+    coordinator
+      ..enqueue(_secondLong(1))
+      ..holdTurn();
+
+    expect(coordinator.interruptTurn(), isTrue);
+    expect(coordinator.resumeHeldTurn(), isEmpty);
+
+    final silenced = coordinator.enqueue(_secondLong(2));
+
+    expect(silenced.silencedChunk, isTrue);
+    expect(player.enqueued, hasLength(1));
+  });
+
+  test('holding with nothing unplayed is refused', () {
+    expect(coordinator.holdTurn(), isFalse);
+    expect(player.flushes, isZero);
+  });
+
+  test('a hold across the turn boundary resumes as a finished tail', () {
+    coordinator
+      ..enqueue(_secondLong(1))
+      ..holdTurn()
+      ..markTurnFinished()
+      ..resumeHeldTurn();
+
+    final outcome = coordinator.enqueue(_secondLong(2));
+
+    expect(outcome.flushedPreviousTurn, isTrue);
+  });
+
+  test('a new answer over a held finished tail supersedes it', () {
+    coordinator
+      ..enqueue(_secondLong(1))
+      ..markTurnFinished()
+      ..holdTurn();
+
+    final outcome = coordinator.enqueue(_secondLong(2));
+
+    expect(outcome.heldChunk, isFalse);
+    expect(outcome.flushedPreviousTurn, isTrue);
+    expect(coordinator.isHolding, isFalse);
+    expect(player.enqueued.last, _secondLong(2));
+  });
+
+  test('reset clears a hold so nothing from it ever resumes', () {
+    coordinator
+      ..enqueue(_secondLong(1))
+      ..holdTurn()
+      ..reset();
+
+    expect(coordinator.isHolding, isFalse);
+    expect(coordinator.resumeHeldTurn(), isEmpty);
+  });
 }
 
 Uint8List _chunk(int seed) => Uint8List.fromList([seed, seed]);
+
+/// One second of audio at the 24 kHz 16-bit mono wire format, so the
+/// wall-clock playhead cannot outrun the chunk within a test.
+Uint8List _secondLong(int seed) => Uint8List(48000)..fillRange(0, 48000, seed);
 
 final class _FakePcmAudioPlayer implements PcmAudioPlayer {
   bool accepts = true;

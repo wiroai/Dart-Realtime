@@ -4,10 +4,11 @@ import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
 /// Everything a conversation session knows about itself at one moment.
 ///
-/// This is the service's whole output surface. It deliberately excludes purely
-/// visual concerns such as whether the protocol panel is expanded; the only
-/// concession is [revealProtocolPanel], which reports that a failure produced
-/// diagnostics worth showing rather than dictating panel state.
+/// This is the service's whole output surface, and it deliberately excludes
+/// purely visual concerns: the view model narrows it to what the screen
+/// draws. Transcripts and the clock live here because the session needs them
+/// — a reconnect preserves what was said, the limit watches the clock — and
+/// because tests read the session through this surface alone.
 final class ConversationSessionSnapshot extends Equatable {
   const ConversationSessionSnapshot({
     this.status = ViewStatus.initial,
@@ -17,11 +18,11 @@ final class ConversationSessionSnapshot extends Equatable {
     this.aiTranscript = '',
     this.microphoneActive = false,
     this.muted = false,
-    this.speakerEnabled = true,
-    this.isChangingVoice = false,
+    this.isReconfiguring = false,
+    this.isSuspended = false,
     this.errorMessage,
+    this.canOpenSystemSettings = false,
     this.protocolEvents = const [],
-    this.revealProtocolPanel = false,
   });
 
   final ViewStatus status;
@@ -31,11 +32,21 @@ final class ConversationSessionSnapshot extends Equatable {
   final String aiTranscript;
   final bool microphoneActive;
   final bool muted;
-  final bool speakerEnabled;
-  final bool isChangingVoice;
+
+  /// True while the session is tearing down its task and building a new one
+  /// with the current parameters, without the user having hung up.
+  final bool isReconfiguring;
+
+  /// True while the speaker is away and the task is being held for them:
+  /// the microphone is off, nothing is billed to the transcript, and the
+  /// conversation is one return away from continuing.
+  final bool isSuspended;
   final String? errorMessage;
+
+  /// True when [errorMessage] describes something no retry can fix and the
+  /// system settings screen can.
+  final bool canOpenSystemSettings;
   final List<String> protocolEvents;
-  final bool revealProtocolPanel;
 
   ConversationSessionSnapshot copyWith({
     ViewStatus? status,
@@ -45,11 +56,11 @@ final class ConversationSessionSnapshot extends Equatable {
     String? aiTranscript,
     bool? microphoneActive,
     bool? muted,
-    bool? speakerEnabled,
-    bool? isChangingVoice,
+    bool? isReconfiguring,
+    bool? isSuspended,
     Object? errorMessage = _unset,
+    bool? canOpenSystemSettings,
     List<String>? protocolEvents,
-    bool? revealProtocolPanel,
   }) {
     return ConversationSessionSnapshot(
       status: status ?? this.status,
@@ -59,13 +70,14 @@ final class ConversationSessionSnapshot extends Equatable {
       aiTranscript: aiTranscript ?? this.aiTranscript,
       microphoneActive: microphoneActive ?? this.microphoneActive,
       muted: muted ?? this.muted,
-      speakerEnabled: speakerEnabled ?? this.speakerEnabled,
-      isChangingVoice: isChangingVoice ?? this.isChangingVoice,
+      isReconfiguring: isReconfiguring ?? this.isReconfiguring,
+      isSuspended: isSuspended ?? this.isSuspended,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
+      canOpenSystemSettings:
+          canOpenSystemSettings ?? this.canOpenSystemSettings,
       protocolEvents: protocolEvents ?? this.protocolEvents,
-      revealProtocolPanel: revealProtocolPanel ?? this.revealProtocolPanel,
     );
   }
 
@@ -78,11 +90,11 @@ final class ConversationSessionSnapshot extends Equatable {
     aiTranscript,
     microphoneActive,
     muted,
-    speakerEnabled,
-    isChangingVoice,
+    isReconfiguring,
+    isSuspended,
     errorMessage,
+    canOpenSystemSettings,
     protocolEvents,
-    revealProtocolPanel,
   ];
 }
 

@@ -5,16 +5,17 @@ import 'package:wiro_realtime/core/models/model_parameter_values.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
+import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voice_activity.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view_model/state/speech_to_speech_state.dart';
 
 /// Projects a conversation session onto view state.
 ///
-/// Every command is delegated to [sessionService]; the only state this class
-/// owns is [SpeechToSpeechState.protocolExpanded], which is a purely visual
-/// concern the session has no business knowing about.
+/// Every command is delegated to [sessionService]; this class owns no state
+/// of its own and only narrows the session's snapshot to the fields the
+/// screen draws.
 final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
   SpeechToSpeechViewModel({required this.sessionService})
-    : super(SpeechToSpeechState(selectedModel: sessionService.model)) {
+    : super(const SpeechToSpeechState()) {
     _snapshotSubscription = sessionService.snapshots.listen(_applySnapshot);
     // Adopt whatever the session already holds instead of trusting this
     // class's own field defaults to agree with the snapshot's.
@@ -26,14 +27,11 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
   late final StreamSubscription<ConversationSessionSnapshot>
   _snapshotSubscription;
 
-  /// A failure keeps reporting itself for as long as the session stays failed,
-  /// so the panel is revealed only on the edge into that state. Without this
-  /// the user could never collapse the panel again.
-  bool _protocolPanelRevealed = false;
-
   ModelParameterValues get parameters => sessionService.parameters;
 
   RealtimeSessionGuard get sessionGuard => sessionService.sessionGuard;
+
+  ConversationVoiceActivity get voiceActivity => sessionService.voiceActivity;
 
   Future<void> start() => sessionService.start();
 
@@ -41,17 +39,24 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
 
   Future<void> changeVoice(String voice) => sessionService.changeVoice(voice);
 
+  Future<void> applyParameterChanges() =>
+      sessionService.applyParameterChanges();
+
+  /// The speaker left the conversation on screen: hold their task quietly
+  /// instead of hanging up on them.
+  Future<void> suspend() => sessionService.suspend();
+
+  Future<void> resume() => sessionService.resume();
+
   void muteChanged({required bool muted}) {
     sessionService.setMuted(muted: muted);
   }
 
-  void speakerChanged({required bool enabled}) {
-    sessionService.setSpeakerEnabled(enabled: enabled);
+  void interruptAssistant() {
+    sessionService.interruptAssistant();
   }
 
-  void toggleProtocolPanel() {
-    emit(state.copyWith(protocolExpanded: !state.protocolExpanded));
-  }
+  Future<void> openSystemSettings() => sessionService.openSystemSettings();
 
   @override
   void dispose() {
@@ -61,23 +66,13 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
   }
 
   void _applySnapshot(ConversationSessionSnapshot snapshot) {
-    final revealNow =
-        snapshot.revealProtocolPanel && !_protocolPanelRevealed;
-    _protocolPanelRevealed = snapshot.revealProtocolPanel;
     emit(
       state.copyWith(
-        status: snapshot.status,
         sessionState: snapshot.sessionState,
-        elapsed: snapshot.elapsed,
-        userTranscript: snapshot.userTranscript,
-        aiTranscript: snapshot.aiTranscript,
-        microphoneActive: snapshot.microphoneActive,
         muted: snapshot.muted,
-        speakerEnabled: snapshot.speakerEnabled,
-        isChangingVoice: snapshot.isChangingVoice,
+        isReconfiguring: snapshot.isReconfiguring,
         errorMessage: snapshot.errorMessage,
-        protocolEvents: snapshot.protocolEvents,
-        protocolExpanded: revealNow || state.protocolExpanded,
+        canOpenSystemSettings: snapshot.canOpenSystemSettings,
       ),
     );
   }

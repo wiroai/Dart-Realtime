@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_copy.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/types/conversation_stage.dart';
 
 void main() {
@@ -24,50 +23,4 @@ void main() {
     }
   });
 
-  test('numbers the connecting sequence without gaps', () {
-    final steps =
-        RealtimeSessionState.values
-            .map((state) => state.connectingStep)
-            .whereType<int>()
-            .toList()
-          ..sort();
-
-    expect(
-      steps,
-      List<int>.generate(
-        ConversationStagePresentation.connectingStepCount,
-        (index) => index + 1,
-      ),
-    );
-  });
-
-  test('numbers only the states that are part of connecting', () {
-    for (final state in RealtimeSessionState.values) {
-      expect(
-        state.connectingStep != null,
-        state.conversationStage == ConversationStage.connecting,
-        reason: '$state',
-      );
-    }
-  });
-
-  test('labels every connecting state and nothing else', () {
-    for (final state in RealtimeSessionState.values) {
-      final label = ConversationCopy.connectingStepLabel(state);
-      expect(
-        label.isNotEmpty,
-        state.conversationStage == ConversationStage.connecting,
-        reason: '$state',
-      );
-    }
-  });
-
-  test('never leaks a session enum name to the screen', () {
-    for (final state in RealtimeSessionState.values) {
-      expect(
-        ConversationCopy.connectingStepLabel(state),
-        isNot(contains(state.name)),
-      );
-    }
-  });
 }

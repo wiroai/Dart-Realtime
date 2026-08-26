@@ -21,13 +21,13 @@ abstract final class ProjectPadding {
     ProjectSpacing.lg,
   );
 
-  /// A full-height scrollable stage. The generous bottom inset keeps the
-  /// last control clear of the navigation bar and of the floating in-call
-  /// bar that sits above it.
+  /// A stage that fills its screen and does not scroll, so the inset is
+  /// spent on breathing room rather than on clearing a navigation bar the
+  /// content can no longer be dragged under.
   static const EdgeInsets stage = EdgeInsets.fromLTRB(
     ProjectSpacing.md,
     ProjectSpacing.lg,
     ProjectSpacing.md,
-    ProjectSpacing.xxxl,
+    ProjectSpacing.md,
   );
 }

@@ -29,18 +29,18 @@ class ConversationAppBarBottom extends StatelessWidget
 
     return ValueSelectorBuilder<
       SpeechToSpeechState,
-      ({RealtimeSessionState sessionState, bool isChangingVoice})
+      ({RealtimeSessionState sessionState, bool isReconfiguring})
     >(
       valueListenable: viewModel,
       selector: (state) => (
         sessionState: state.sessionState,
-        isChangingVoice: state.isChangingVoice,
+        isReconfiguring: state.isReconfiguring,
       ),
       builder: (context, meta) {
         final stage = meta.sessionState.conversationStage;
         final isLive = stage == ConversationStage.live;
         final liveLayout =
-            meta.isChangingVoice || isLive || stage == ConversationStage.ending;
+            meta.isReconfiguring || isLive || stage == ConversationStage.ending;
         return SizedBox(
           height: preferredSize.height,
           child: Padding(
@@ -68,7 +68,7 @@ class ConversationAppBarBottom extends StatelessWidget
                       voiceField.id,
                     ),
                     enabled: stage == ConversationStage.ready || isLive,
-                    loading: meta.isChangingVoice,
+                    loading: meta.isReconfiguring,
                     onSelected: isLive
                         ? (voice) => viewModel.changeVoice(voice).ignore()
                         : null,

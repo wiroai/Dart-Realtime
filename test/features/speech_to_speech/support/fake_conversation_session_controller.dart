@@ -6,6 +6,7 @@ import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
+import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voice_activity.dart';
 
 final class FakeConversationSessionController
     implements ConversationSessionController {
@@ -15,9 +16,13 @@ final class FakeConversationSessionController
   int startCalls = 0;
   int stopCalls = 0;
   int disposeCalls = 0;
+  int interruptCalls = 0;
+  int applyParameterChangesCalls = 0;
+  int openSystemSettingsCalls = 0;
+  int suspendCalls = 0;
+  int resumeCalls = 0;
   final List<String> changeVoiceRequests = [];
   final List<bool> muteRequests = [];
-  final List<bool> speakerRequests = [];
 
   bool get hasListeners => _snapshots.hasListener;
 
@@ -39,6 +44,9 @@ final class FakeConversationSessionController
   final RealtimeSessionGuard sessionGuard = RealtimeSessionGuard();
 
   @override
+  final ConversationVoiceActivity voiceActivity = ConversationVoiceActivity();
+
+  @override
   Future<void> start() async {
     startCalls++;
   }
@@ -54,13 +62,33 @@ final class FakeConversationSessionController
   }
 
   @override
+  Future<void> applyParameterChanges() async {
+    applyParameterChangesCalls++;
+  }
+
+  @override
+  Future<void> suspend() async {
+    suspendCalls++;
+  }
+
+  @override
+  Future<void> resume() async {
+    resumeCalls++;
+  }
+
+  @override
   void setMuted({required bool muted}) {
     muteRequests.add(muted);
   }
 
   @override
-  void setSpeakerEnabled({required bool enabled}) {
-    speakerRequests.add(enabled);
+  Future<void> openSystemSettings() async {
+    openSystemSettingsCalls++;
+  }
+
+  @override
+  void interruptAssistant() {
+    interruptCalls++;
   }
 
   /// Unlike the real service this keeps the stream open, so a test can prove

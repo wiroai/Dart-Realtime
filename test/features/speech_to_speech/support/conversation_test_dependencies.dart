@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:wiro_realtime/app/config/conversation_config.dart';
 import 'package:wiro_realtime/core/audio/audio_failure.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_player.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
@@ -34,23 +35,40 @@ final class ConversationTestDependencies {
   final FakeRealtimeSession session = FakeRealtimeSession();
   final RealtimeSessionGuard sessionGuard = RealtimeSessionGuard();
 
+  /// One entry per socket subscription, so a test can tell a reconnect to
+  /// the same task from a brand new one.
+  final List<String> subscribedTaskTokens = [];
+
   SpeechToSpeechSessionService createService({
     int maxRetryAttempts = 0,
     Duration retryBaseDelay = Duration.zero,
+    Duration micStallTimeout = const Duration(seconds: 3),
+    Duration autoRestartDelay = const Duration(seconds: 5),
+    int maxAutoRestarts = 2,
+    Duration maxSessionDuration = ConversationConfig.maxSessionDuration,
+    Duration suspendGracePeriod = ConversationConfig.suspendGracePeriod,
   }) {
     return SpeechToSpeechSessionService(
+      maxSessionDuration: maxSessionDuration,
+      suspendGracePeriod: suspendGracePeriod,
       audioSession: audioSession,
       apiClient: apiClient,
       sessionFactory: ({
         required taskId,
         required taskToken,
-      }) => session,
+      }) {
+        subscribedTaskTokens.add(taskToken);
+        return session;
+      },
       recorder: recorder,
       player: player,
       sessionGuard: sessionGuard,
       terminalTimeout: Duration.zero,
       maxRetryAttempts: maxRetryAttempts,
       retryBaseDelay: retryBaseDelay,
+      micStallTimeout: micStallTimeout,
+      autoRestartDelay: autoRestartDelay,
+      maxAutoRestarts: maxAutoRestarts,
     );
   }
 }
@@ -67,6 +85,8 @@ final class FakeRealtimeAudioSession implements RealtimeAudioSession {
   final AudioPreparationResult result;
   final List<RealtimeAudioProfile> preparedProfiles = [];
   int deactivateCalls = 0;
+  int openSystemSettingsCalls = 0;
+  bool systemSettingsAvailable = true;
 
   @override
   Stream<RealtimeAudioInterruption> get interruptions =>
@@ -95,6 +115,12 @@ final class FakeRealtimeAudioSession implements RealtimeAudioSession {
   Future<bool> setSpeakerEnabled({required bool enabled}) async => true;
 
   @override
+  Future<bool> openSystemSettings() async {
+    openSystemSettingsCalls++;
+    return systemSettingsAvailable;
+  }
+
+  @override
   Future<void> dispose() async {
     await _interruptionController.close();
     await _becomingNoisyController.close();
@@ -112,6 +138,7 @@ final class FakeWiroApiClient implements WiroApiClient {
 
   final List<Exception> _runErrors;
   int runCalls = 0;
+  int terminateCalls = 0;
   Map<String, Object?>? lastParameters;
 
   @override
@@ -140,7 +167,9 @@ final class FakeWiroApiClient implements WiroApiClient {
   Future<void> terminateTaskBestEffort({
     required String taskId,
     required String taskToken,
-  }) async {}
+  }) async {
+    terminateCalls++;
+  }
 }
 
 final class FakePcmAudioRecorder implements PcmAudioRecorder {
@@ -298,6 +327,10 @@ final class FakeRealtimeSession implements RealtimeSessionClient {
   int connectCalls = 0;
   int sessionEndCalls = 0;
   int closeCalls = 0;
+
+  /// Set to make the next subscription fail, standing in for a server that
+  /// no longer has the task.
+  Exception? connectError;
   bool _ready = false;
   bool _closed = false;
 
@@ -313,9 +346,17 @@ final class FakeRealtimeSession implements RealtimeSessionClient {
   @override
   RealtimeSessionMetrics get metrics => const RealtimeSessionMetrics.empty();
 
+  /// Revives a closed fake, the way the real factory hands out a fresh
+  /// session per task, so reconnect flows can be exercised.
   @override
   Future<void> connect() async {
     connectCalls++;
+    final error = connectError;
+    if (error != null) {
+      connectError = null;
+      throw error;
+    }
+    _closed = false;
     _ready = true;
   }
 
@@ -355,5 +396,11 @@ final class FakeRealtimeSession implements RealtimeSessionClient {
 
   void emit(RealtimeEvent event) {
     _eventsController.add(event);
+  }
+
+  /// Simulates the transport surfacing an error mid-stream, the way a
+  /// remotely killed task reaches the service.
+  void emitError(Object error) {
+    _eventsController.addError(error);
   }
 }
