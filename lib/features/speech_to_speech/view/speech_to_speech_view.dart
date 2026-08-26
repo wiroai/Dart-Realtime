@@ -7,7 +7,6 @@ import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversat
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_fields.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_layout.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/mixin/speech_to_speech_view_mixin.dart';
-import 'package:wiro_realtime/features/speech_to_speech/view/types/conversation_stage.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/advanced_settings_sheet.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/conversation_app_bar_bottom.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/conversation_orb.dart';
@@ -105,75 +104,10 @@ class _AdvancedAction extends StatelessWidget {
 /// should be watched as one shape settling rather than one screen
 /// replacing another — and a shape can only be animated across a change
 /// it survives.
-class ConversationStageView extends StatefulWidget {
+class ConversationStageView extends StatelessWidget {
   const ConversationStageView({required this.viewModel, super.key});
 
   final SpeechToSpeechViewModel viewModel;
-
-  @override
-  State<ConversationStageView> createState() => _ConversationStageViewState();
-}
-
-class _ConversationStageViewState extends State<ConversationStageView> {
-  /// Whether someone tapped the orb and is still waiting to be heard.
-  ///
-  /// The connect ring and the line under it belong to that wait and to
-  /// nothing else. Every other trip through `connecting` — a dropped
-  /// socket, a changed voice, a return from the background, a session
-  /// the service restarts on its own after a server error — happens to
-  /// someone who did not ask for it and often did not notice, and a ring
-  /// around the orb tells them their conversation stopped.
-  ///
-  /// Being opened by the tap rather than by a session state is the point:
-  /// no state the service reports can raise a ring nobody asked for.
-  bool _awaitingFirstWord = false;
-
-  @override
-  void initState() {
-    super.initState();
-    widget.viewModel.addListener(_watchStage);
-    _watchStage();
-  }
-
-  @override
-  void didUpdateWidget(ConversationStageView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.viewModel != widget.viewModel) {
-      oldWidget.viewModel.removeListener(_watchStage);
-      widget.viewModel.addListener(_watchStage);
-      _watchStage();
-    }
-  }
-
-  @override
-  void dispose() {
-    widget.viewModel.removeListener(_watchStage);
-    super.dispose();
-  }
-
-  void _start() {
-    setState(() => _awaitingFirstWord = true);
-    widget.viewModel.start().ignore();
-  }
-
-  void _watchStage() {
-    if (!_awaitingFirstWord || !mounted) {
-      return;
-    }
-    // The wait ends when the conversation becomes audible, and equally
-    // when it turns out it never will. Only these two stages hold it
-    // open, so nothing that happens later can reopen it.
-    final holds = switch (widget.viewModel.value.sessionState
-        .conversationStage) {
-      ConversationStage.ready || ConversationStage.connecting => true,
-      ConversationStage.live ||
-      ConversationStage.ending ||
-      ConversationStage.failed => false,
-    };
-    if (!holds) {
-      setState(() => _awaitingFirstWord = false);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,16 +119,9 @@ class _ConversationStageViewState extends State<ConversationStageView> {
             height: ConversationLayout.bandAbove(constraints.maxHeight),
           ),
           Center(
-            child: ConversationOrb(
-              viewModel: widget.viewModel,
-              reportsConnecting: _awaitingFirstWord,
-              onStart: _start,
-            ),
+            child: ConversationOrb(viewModel: viewModel),
           ),
-          ConversationStageNote(
-            viewModel: widget.viewModel,
-            reportsConnecting: _awaitingFirstWord,
-          ),
+          ConversationStageNote(viewModel: viewModel),
         ],
       ),
     );

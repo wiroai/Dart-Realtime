@@ -89,6 +89,58 @@ void main() {
     expect(harness.viewModel.state.errorMessage, isNull);
   });
 
+  test('start raises reportsConnecting and going live lowers it', () async {
+    final harness = build();
+    expect(harness.viewModel.state.reportsConnecting, isFalse);
+
+    await harness.viewModel.start();
+    expect(harness.viewModel.state.reportsConnecting, isTrue);
+
+    // The connect steps keep the asked-for wait open…
+    harness.controller.publish(
+      const ConversationSessionSnapshot(
+        sessionState: RealtimeSessionState.creatingTask,
+      ),
+    );
+    expect(harness.viewModel.state.reportsConnecting, isTrue);
+
+    // …and the first audible moment closes it for good.
+    harness.controller.publish(
+      const ConversationSessionSnapshot(
+        sessionState: RealtimeSessionState.streaming,
+      ),
+    );
+    expect(harness.viewModel.state.reportsConnecting, isFalse);
+  });
+
+  test('a failed start also lowers reportsConnecting', () async {
+    final harness = build();
+    await harness.viewModel.start();
+
+    harness.controller.publish(
+      const ConversationSessionSnapshot(
+        sessionState: RealtimeSessionState.failure,
+        errorMessage: 'boom',
+      ),
+    );
+
+    expect(harness.viewModel.state.reportsConnecting, isFalse);
+  });
+
+  test('a session connecting on its own raises no reportsConnecting', () {
+    final harness = build();
+
+    // A dropped socket being rebuilt, a voice change, an auto-restart:
+    // nobody tapped, so nobody is waiting.
+    harness.controller.publish(
+      const ConversationSessionSnapshot(
+        sessionState: RealtimeSessionState.connectingSocket,
+      ),
+    );
+
+    expect(harness.viewModel.state.reportsConnecting, isFalse);
+  });
+
   test('commands are delegated to the session', () async {
     final harness = build();
 

@@ -23,33 +23,19 @@ import 'package:wiro_realtime/features/speech_to_speech/view_model/state/speech_
 /// the session; tapping it live pauses capture, or cuts the assistant off
 /// while the assistant is the one talking.
 class ConversationOrb extends StatelessWidget {
-  const ConversationOrb({
-    required this.viewModel,
-    required this.reportsConnecting,
-    required this.onStart,
-    super.key,
-  });
+  const ConversationOrb({required this.viewModel, super.key});
 
   final SpeechToSpeechViewModel viewModel;
-
-  /// Whether a connecting transport is worth showing as connecting.
-  ///
-  /// True only between the tap and the first word. Every other rebuild
-  /// is drawn as the live conversation it is, since nobody is waiting on
-  /// it and a ring would say the conversation had stopped.
-  final bool reportsConnecting;
-
-  /// Begins a conversation. The orb reports the tap rather than starting
-  /// the session itself, because the screen has to know a wait was asked
-  /// for before it draws one.
-  final VoidCallback onStart;
 
   @override
   Widget build(BuildContext context) {
     return ValueSelectorBuilder<SpeechToSpeechState, _OrbState>(
       valueListenable: viewModel,
-      selector: (state) =>
-          (paused: state.muted, sessionState: state.sessionState),
+      selector: (state) => (
+        paused: state.muted,
+        sessionState: state.sessionState,
+        reportsConnecting: state.reportsConnecting,
+      ),
       builder: (context, state) {
         return ValueListenableBuilder<RealtimeSessionLease?>(
           valueListenable: viewModel.sessionGuard,
@@ -75,7 +61,7 @@ class ConversationOrb extends StatelessWidget {
     // keeps meaning pause or interrupt, and the orb keeps looking like a
     // conversation, because for the person talking it never stopped being
     // one.
-    final stage = _stageOf(state.sessionState);
+    final stage = _stageOf(state);
     final live = stage == ConversationStage.live;
     final connecting = stage == ConversationStage.connecting;
     return VoiceOrb(
@@ -95,7 +81,7 @@ class ConversationOrb extends StatelessWidget {
           ? null
           : () {
               HapticFeedback.mediumImpact().ignore();
-              onStart();
+              viewModel.start().ignore();
             },
     );
   }
@@ -139,9 +125,14 @@ class ConversationOrb extends StatelessWidget {
   /// What the screen is showing, which is not always what the transport
   /// is doing: a live conversation whose socket is being rebuilt is still
   /// a live conversation to the person holding the phone.
-  ConversationStage _stageOf(RealtimeSessionState sessionState) {
-    final stage = sessionState.conversationStage;
-    return !reportsConnecting && stage == ConversationStage.connecting
+  ///
+  /// `reportsConnecting` is true only between the tap and the first word.
+  /// Every other rebuild is drawn as the live conversation it is, since
+  /// nobody is waiting on it and a ring would say the conversation had
+  /// stopped.
+  ConversationStage _stageOf(_OrbState state) {
+    final stage = state.sessionState.conversationStage;
+    return !state.reportsConnecting && stage == ConversationStage.connecting
         ? ConversationStage.live
         : stage;
   }
@@ -177,4 +168,8 @@ class ConversationOrb extends StatelessWidget {
   }
 }
 
-typedef _OrbState = ({bool paused, RealtimeSessionState sessionState});
+typedef _OrbState = ({
+  bool paused,
+  RealtimeSessionState sessionState,
+  bool reportsConnecting,
+});

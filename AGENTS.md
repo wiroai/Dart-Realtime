@@ -127,9 +127,10 @@ A new screen that hosts the conversation has to pass that flag too.
  wait runs on someone else's network and motion alone cannot tell
  "coming" from "stuck". A conversation that merely ended says nothing,
  because the orb coming back already says it.
-- The ring and that line answer a tap and nothing else. The orb reports
-  the tap to `ConversationStageView`, which opens `reportsConnecting`
-  until the conversation is audible or turns out never to be. Every other
+- The ring and that line answer a tap and nothing else. The view model's
+  `start` raises `reportsConnecting` on the state, and the next snapshots
+  lower it once the conversation is audible or turns out never to be —
+  no widget holds this in a `setState` of its own. Every other
   pass through `connecting` — a dropped socket, an edited voice, a return
   from the background, a session the service restarts on its own after a
   server error — is drawn as the live conversation it is. Keying this to

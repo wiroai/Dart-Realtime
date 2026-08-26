@@ -22,19 +22,9 @@ import 'package:wiro_realtime/features/speech_to_speech/view_model/state/speech_
 /// Everything else is silent. A conversation that is live, or that merely
 /// ended, is fully described by the orb above.
 class ConversationStageNote extends StatelessWidget {
-  const ConversationStageNote({
-    required this.viewModel,
-    required this.reportsConnecting,
-    super.key,
-  });
+  const ConversationStageNote({required this.viewModel, super.key});
 
   final SpeechToSpeechViewModel viewModel;
-
-  /// Whether a connecting transport is worth naming. True only between
-  /// the tap and the first word: a rebuild behind a conversation someone
-  /// is already having is not news, and there is nothing to cancel that
-  /// the orb does not already cancel.
-  final bool reportsConnecting;
 
   @override
   Widget build(BuildContext context) {
@@ -42,6 +32,7 @@ class ConversationStageNote extends StatelessWidget {
       SpeechToSpeechState,
       ({
         RealtimeSessionState sessionState,
+        bool reportsConnecting,
         String? errorMessage,
         bool canOpenSystemSettings,
       })
@@ -49,13 +40,18 @@ class ConversationStageNote extends StatelessWidget {
       valueListenable: viewModel,
       selector: (state) => (
         sessionState: state.sessionState,
+        reportsConnecting: state.reportsConnecting,
         errorMessage: state.errorMessage,
         canOpenSystemSettings: state.canOpenSystemSettings,
       ),
       builder: (context, state) {
         final stage = state.sessionState.conversationStage;
+        // `reportsConnecting` is true only between the tap and the first
+        // word: a rebuild behind a conversation someone is already having
+        // is not news, and there is nothing to cancel that the orb does
+        // not already cancel.
         final connecting =
-            reportsConnecting && stage == ConversationStage.connecting;
+            state.reportsConnecting && stage == ConversationStage.connecting;
         // Height and content are animated separately: the block grows into
         // its new size while the words cross-fade inside it, so the orb
         // above never jumps to make room for a line of text.

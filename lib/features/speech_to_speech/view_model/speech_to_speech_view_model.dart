@@ -6,6 +6,7 @@ import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voice_activity.dart';
+import 'package:wiro_realtime/features/speech_to_speech/view/types/conversation_stage.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view_model/state/speech_to_speech_state.dart';
 
 /// Projects a conversation session onto view state.
@@ -33,7 +34,13 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
 
   ConversationVoiceActivity get voiceActivity => sessionService.voiceActivity;
 
-  Future<void> start() => sessionService.start();
+  /// Begins a conversation someone asked for, so the wait it opens is
+  /// worth drawing: `reportsConnecting` rises with the tap and falls the
+  /// moment the conversation is audible or turns out never to be.
+  Future<void> start() {
+    emit(state.copyWith(reportsConnecting: true));
+    return sessionService.start();
+  }
 
   Future<void> stop() => sessionService.stop();
 
@@ -66,11 +73,22 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
   }
 
   void _applySnapshot(ConversationSessionSnapshot snapshot) {
+    // The tapped-for wait ends when the conversation becomes audible, and
+    // equally when it turns out it never will. Only `ready` and
+    // `connecting` hold it open, so nothing that happens later can reopen
+    // it.
+    final holdsFirstWait = switch (snapshot.sessionState.conversationStage) {
+      ConversationStage.ready || ConversationStage.connecting => true,
+      ConversationStage.live ||
+      ConversationStage.ending ||
+      ConversationStage.failed => false,
+    };
     emit(
       state.copyWith(
         sessionState: snapshot.sessionState,
         muted: snapshot.muted,
         isReconfiguring: snapshot.isReconfiguring,
+        reportsConnecting: state.reportsConnecting && holdsFirstWait,
         errorMessage: snapshot.errorMessage,
         canOpenSystemSettings: snapshot.canOpenSystemSettings,
       ),
