@@ -1,0 +1,29 @@
+name: wiro_voice_engine
+description: >-
+  Wiro's native audio bridge for realtime conversations: microphone capture
+  and PCM playback share one audio graph so acoustic echo cancellation can
+  correlate speaker output with microphone input.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.7.2
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^5.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.wiro.voice_engine
+        pluginClass: WiroVoiceEnginePlugin
+      ios:
+        pluginClass: WiroVoiceEnginePlugin

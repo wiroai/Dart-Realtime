@@ -15,7 +15,7 @@ void main() {
     expect(snapshot['inferenceSteps'], 10);
   });
 
-  test('uses language-neutral noise-resistant conversation defaults', () {
+  test('uses noise-resistant conversation defaults', () {
     final parameters = ModelParameterValues(
       WiroModelCatalog.gptRealtimeMini.firstPassFields,
     );
@@ -25,9 +25,24 @@ void main() {
 
     expect(snapshot['turn_detection_threshold'], 0.75);
     expect(snapshot['turn_detection_silence_ms'], 700);
-    expect(
-      snapshot['system_instructions'],
-      contains('Allow intentional language changes'),
+  });
+
+  test('overrides replace catalog defaults and ignore unknown ids', () {
+    final parameters = ModelParameterValues(
+      WiroModelCatalog.gptRealtimeMini.firstPassFields,
+      overrides: const {
+        'voice': 'cedar',
+        'system_instructions': 'You answer support questions.',
+        'not_a_field': 'ignored',
+      },
     );
+    addTearDown(parameters.dispose);
+
+    final snapshot = parameters.requestSnapshot();
+
+    expect(snapshot['voice'], 'cedar');
+    expect(snapshot['system_instructions'], 'You answer support questions.');
+    expect(snapshot.containsKey('not_a_field'), isFalse);
+    expect(snapshot['turn_detection_threshold'], 0.75);
   });
 }

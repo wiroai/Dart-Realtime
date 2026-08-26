@@ -34,6 +34,25 @@ void main() {
     expect(player.isPlaying, isFalse);
   });
 
+  test('a sink that stopped draining still lets completion finish', () async {
+    final sink = FakePcmPlaybackSink(stalled: true);
+    final player = QueuedPcmAudioPlayer(
+      sink,
+      drainTimeout: const Duration(milliseconds: 40),
+    );
+    addTearDown(player.dispose);
+
+    await player.start();
+    await player.enqueue(Uint8List.fromList([1]));
+
+    // Without a bound this never returns, and the caller — a conversation
+    // the server has just ended — never gets to say that it ended.
+    await player.complete().timeout(const Duration(seconds: 2));
+
+    expect(player.isPlaying, isFalse);
+    expect(sink.fedChunks, isEmpty);
+  });
+
   test('speaker disable flushes audio and re-enable accepts new PCM', () async {
     final sink = FakePcmPlaybackSink();
     final player = QueuedPcmAudioPlayer(sink);
@@ -85,9 +104,13 @@ void main() {
 }
 
 final class FakePcmPlaybackSink implements PcmPlaybackSink {
-  FakePcmPlaybackSink({this.failFeed = false});
+  FakePcmPlaybackSink({this.failFeed = false, this.stalled = false});
 
   final bool failFeed;
+
+  /// Reports a native buffer that never empties, which is what a torn-down
+  /// engine looks like from here.
+  final bool stalled;
   final List<List<int>> fedChunks = [];
   final List<double> volumes = [];
 
@@ -126,7 +149,8 @@ final class FakePcmPlaybackSink implements PcmPlaybackSink {
   }
 
   @override
-  Future<Duration> bufferedDuration() async => Duration.zero;
+  Future<Duration> bufferedDuration() async =>
+      stalled ? const Duration(seconds: 30) : Duration.zero;
 
   @override
   Future<void> setVolume(double volume) async {

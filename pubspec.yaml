@@ -16,12 +16,12 @@ dependencies:
   equatable: ^2.1.0
   flutter:
     sdk: flutter
-  flutter_voice_engine:
-    path: packages/flutter_voice_engine-0.0.1
   json_annotation: ^4.12.0
   permission_handler: ^12.0.1
   record: ^7.1.1
   web_socket_channel: ^3.0.3
+  wiro_voice_engine:
+    path: packages/wiro_voice_engine
 
 dev_dependencies:
   build_runner: ^2.16.0

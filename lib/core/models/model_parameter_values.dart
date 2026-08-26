@@ -2,13 +2,21 @@ import 'package:flutter/foundation.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 
 final class ModelParameterValues {
-  ModelParameterValues(List<ModelFieldDefinition> fields) {
+  /// [overrides] replace the catalog defaults for the ids they name, which
+  /// is how an application states its own choices without editing the model
+  /// schema. Ids the model does not expose are ignored.
+  ModelParameterValues(
+    List<ModelFieldDefinition> fields, {
+    Map<String, String> overrides = const {},
+  }) {
     for (final field in fields) {
       if (!field.includeInFirstPass) {
         continue;
       }
       _definitions[field.id] = field;
-      notifiers[field.id] = ValueNotifier(field.defaultValue ?? '');
+      notifiers[field.id] = ValueNotifier(
+        overrides[field.id] ?? field.defaultValue ?? '',
+      );
     }
   }
 

@@ -12,13 +12,10 @@ final class BoundedPcmQueue {
   Completer<void>? _dataAvailable;
   Completer<void>? _spaceAvailable;
   bool _closed = false;
-  int _queuedBytes = 0;
   int _highWaterMarkInChunks = 0;
   int _rejectedChunks = 0;
 
   int get length => _chunks.length;
-
-  int get queuedBytes => _queuedBytes;
 
   int get highWaterMarkInChunks => _highWaterMarkInChunks;
 
@@ -56,7 +53,6 @@ final class BoundedPcmQueue {
   void _addOwnedChunk(Uint8List chunk) {
     final ownedChunk = Uint8List.fromList(chunk);
     _chunks.addLast(ownedChunk);
-    _queuedBytes += ownedChunk.length;
     if (_chunks.length > _highWaterMarkInChunks) {
       _highWaterMarkInChunks = _chunks.length;
     }
@@ -73,7 +69,6 @@ final class BoundedPcmQueue {
     }
 
     final chunk = _chunks.removeFirst();
-    _queuedBytes -= chunk.length;
     _signalSpaceAvailable();
     return chunk;
   }
@@ -90,7 +85,6 @@ final class BoundedPcmQueue {
 
   void clear() {
     _chunks.clear();
-    _queuedBytes = 0;
     _signalSpaceAvailable();
   }
 

@@ -1,0 +1,50 @@
+group = "com.wiro.voice_engine"
+version = "0.1.0"
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.5.1")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: "com.android.library"
+
+android {
+    namespace = "com.wiro.voice_engine"
+
+    compileSdk = 35
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+
+    dependencies {
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
+        implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    }
+}

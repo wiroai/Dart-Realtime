@@ -95,6 +95,15 @@ final class PluginRealtimeAudioSession implements RealtimeAudioSession {
   }
 
   @override
+  Future<bool> openSystemSettings() async {
+    try {
+      return await openAppSettings();
+    } on Object {
+      return false;
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     if (_disposed) {
       return;

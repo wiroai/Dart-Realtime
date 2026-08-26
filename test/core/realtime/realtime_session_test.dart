@@ -159,24 +159,30 @@ void main() {
     expect(socket.closeCalls, 1);
   });
 
-  test('maps server errors without exposing their payload', () async {
+  test('a task_error log frame keeps the session alive', () async {
     final socket = FakeRealtimeSocketClient();
     addTearDown(socket.dispose);
     final session = createSession(socket);
-    final connecting = expectLater(
-      session.connect(),
-      throwsA(isA<WiroSocketFailure>()),
-    );
-    await pumpEventQueue();
+    final received = <RealtimeEvent>[];
+    final subscription = session.events.listen(received.add);
+    addTearDown(subscription.cancel);
 
+    final connecting = session.connect();
+    await pumpEventQueue();
+    socket.emit('{"type":"task_stream_ready"}');
+    await connecting;
+
+    // Wiro documents the live task_error frame as interim stderr output:
+    // the task may still succeed, so only a socket closure is terminal.
     socket.emit(
       '{"type":"task_error","message":"private server detail"}',
     );
-    await connecting;
     await pumpEventQueue();
 
-    expect(session.isClosed, isTrue);
-    expect(socket.closeCalls, 1);
+    expect(session.isReady, isTrue);
+    expect(session.isClosed, isFalse);
+    expect(received, contains(const RealtimeErrorEvent('task_error')));
+    await session.close();
   });
 
   test('maps server cancellation before stream readiness', () async {

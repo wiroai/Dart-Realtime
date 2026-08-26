@@ -57,6 +57,7 @@ final class RealtimeEventParser {
           : const RealtimeMalformedEvent();
     }
     if (type == 'task_error' || type == 'task_error_full') {
+      _logTaskError(type, decoded);
       return RealtimeErrorEvent(type);
     }
     if (type == 'task_cancel') {
@@ -78,5 +79,29 @@ final class RealtimeEventParser {
         'Malformed realtime frame: reason=$reason metadata=$metadata',
       );
     }
+  }
+
+  /// Prints why the server failed the task, so the console answers the
+  /// question the session state cannot.
+  ///
+  /// Debug console only: the payload is never retained on the event, so
+  /// raw server text still cannot reach the UI or the protocol log.
+  void _logTaskError(String type, Map<String, dynamic> payload) {
+    if (!kDebugMode) {
+      return;
+    }
+    final detail = {
+      for (final key in const [
+        'message',
+        'error',
+        'detail',
+        'description',
+        'code',
+      ])
+        if (payload[key] != null) key: payload[key],
+    };
+    debugPrint(
+      'Realtime $type payload: ${detail.isEmpty ? payload : detail}',
+    );
   }
 }

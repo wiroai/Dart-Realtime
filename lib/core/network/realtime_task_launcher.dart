@@ -20,6 +20,12 @@ final class RealtimeTaskLauncher {
   WiroRunResult? _runResult;
   WiroRequestCancellation? _cancellation;
 
+  /// The task this launcher is holding, or null when there is none.
+  ///
+  /// A socket dying does not kill the task behind it, so a caller that wants
+  /// to reconnect rather than start over needs the handle it was given.
+  WiroRunResult? get runResult => _runResult;
+
   /// Creates the task, or returns `null` when `isStillWanted` reports that the
   /// caller moved on while the request was in flight.
   ///

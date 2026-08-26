@@ -1,7 +1,8 @@
 /// PCM wire format from Wiro realtime docs, verified 2026-08-21.
 ///
-/// Endianness is not stated in MCP docs. This example treats samples as
-/// little-endian until a physical-device test confirms the stream.
+/// Samples are signed 16-bit little-endian on both directions of the
+/// stream; changing the rate means changing it in the Run request and in
+/// the local pipeline together, or the audio is garbled.
 abstract final class AudioConstants {
   static const int sampleRateHz = 24000;
   static const int channelCount = 1;

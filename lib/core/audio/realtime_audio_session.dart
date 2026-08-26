@@ -23,6 +23,11 @@ enum RealtimeAudioInterruption {
 }
 
 extension AudioPreparationResultX on AudioPreparationResult {
+  /// True when tapping again can never help and only the system settings
+  /// screen can, which is the one failure the app has to offer a way out of.
+  bool get needsSystemSettings =>
+      this == AudioPreparationResult.permissionPermanentlyDenied;
+
   String? get errorMessage {
     return switch (this) {
       AudioPreparationResult.ready => null,
@@ -52,6 +57,10 @@ abstract interface class RealtimeAudioSession {
   Future<void> deactivate();
 
   Future<bool> setSpeakerEnabled({required bool enabled});
+
+  /// Opens the system settings page for this app. Returns false when the
+  /// platform refused, which leaves the caller nothing further to offer.
+  Future<bool> openSystemSettings();
 
   Future<void> dispose();
 }

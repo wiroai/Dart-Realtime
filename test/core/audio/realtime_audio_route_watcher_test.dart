@@ -116,6 +116,9 @@ final class _FakeRealtimeAudioSession implements RealtimeAudioSession {
   Future<bool> setSpeakerEnabled({required bool enabled}) async => true;
 
   @override
+  Future<bool> openSystemSettings() async => true;
+
+  @override
   Future<void> dispose() async {}
 
   Future<void> close() async {

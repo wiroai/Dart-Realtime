@@ -51,6 +51,11 @@ abstract interface class PcmAudioPlayer {
   /// Drops pending audio while keeping the playback session alive.
   void flush();
 
+  /// Plays out what is already queued, then ends the stream.
+  ///
+  /// Returns even when the sink stopped draining: the queued tail is worth
+  /// waiting for, but not indefinitely, since the caller ending a
+  /// conversation cannot report that it ended until this returns.
   Future<void> complete();
 
   Future<void> setEnabled({required bool enabled});
@@ -66,6 +71,7 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
     this.queueCapacityInChunks = 50,
     this.maxNativeBufferDuration = const Duration(seconds: 2),
     this.backpressurePollInterval = const Duration(milliseconds: 10),
+    this.drainTimeout = const Duration(seconds: 5),
   }) {
     _underrunSubscription = _sink.underruns.listen((_) {
       _underrunCount++;
@@ -76,6 +82,16 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
   final int queueCapacityInChunks;
   final Duration maxNativeBufferDuration;
   final Duration backpressurePollInterval;
+
+  /// How long [complete] waits for the queued tail to actually be heard.
+  ///
+  /// Draining is bounded by the queue and the native buffer, so a healthy
+  /// sink finishes in a second or two. A sink that stopped consuming never
+  /// finishes at all — an engine torn down under a route change, a task the
+  /// server has just ended — and waiting on it forever costs far more than
+  /// the tail: the screen keeps showing a live conversation long after the
+  /// microphone has stopped.
+  final Duration drainTimeout;
   final StreamController<AudioPlaybackFailure> _failureController =
       StreamController<AudioPlaybackFailure>.broadcast(sync: true);
   late final StreamSubscription<void> _underrunSubscription;
@@ -188,20 +204,37 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
       return;
     }
     _queue?.close();
-    await _worker;
-    if (!_playing || _disposed) {
-      return;
-    }
     try {
+      await _worker?.timeout(drainTimeout);
+      if (!_playing || _disposed) {
+        return;
+      }
       if (_enabled) {
-        await _sink.endOfStream();
+        await _sink.endOfStream().timeout(drainTimeout);
       }
       _playing = false;
       _queue = null;
       _worker = null;
+    } on TimeoutException {
+      _abandonTail();
     } on Object {
       _reportFailure();
     }
+  }
+
+  /// Lets go of audio a stalled sink is never going to play.
+  ///
+  /// The worker parks on native backpressure until [_playing] goes false, so
+  /// clearing the flag is what unwinds it; awaiting it here would only wait
+  /// on the same stalled sink a second time.
+  void _abandonTail() {
+    _playing = false;
+    _queue
+      ?..clear()
+      ..close();
+    _queue = null;
+    _worker = null;
+    unawaited(_stopAfterFailure());
   }
 
   @override
@@ -238,7 +271,12 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
     _queue
       ?..clear()
       ..close();
-    await _worker;
+    try {
+      await _worker?.timeout(drainTimeout);
+    } on TimeoutException {
+      // A sink wedged mid-feed cannot hold up a shutdown; the retry path
+      // and the failure path both run through here.
+    }
     _queue = null;
     _worker = null;
     if (_initialized) {

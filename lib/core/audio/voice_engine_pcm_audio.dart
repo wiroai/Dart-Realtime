@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter_voice_engine/flutter_voice_engine.dart';
 import 'package:wiro_realtime/core/audio/audio_constants.dart';
 import 'package:wiro_realtime/core/audio/audio_failure.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_player.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
+import 'package:wiro_voice_engine/wiro_voice_engine.dart';
 
 /// Conversation adapters sharing one native input/output graph.
 ///
@@ -32,7 +32,7 @@ final class _VoiceEngineCoordinator {
   final StreamController<String> _errorController =
       StreamController<String>.broadcast(sync: true);
 
-  FlutterVoiceEngine? _engine;
+  WiroVoiceEngine? _engine;
   StreamSubscription<Uint8List>? _captureSubscription;
   StreamSubscription<String>? _errorSubscription;
   Future<void>? _initialization;
@@ -108,7 +108,7 @@ final class _VoiceEngineCoordinator {
   }
 
   Future<void> _initialize() async {
-    final engine = FlutterVoiceEngine()
+    final engine = WiroVoiceEngine()
       ..audioConfig = AudioConfig(
         bufferSize: AudioConstants.pcmBytesPerChunk,
         amplitudeThreshold: 0,

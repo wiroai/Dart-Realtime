@@ -4,7 +4,6 @@ abstract final class WiroEndpoints {
   static const String webSocketUrl = 'wss://socket.wiro.ai/v1';
   static const String taskCancelPath = '/Task/Cancel';
   static const String taskKillPath = '/Task/Kill';
-  static const String taskDetailPath = '/Task/Detail';
 
   static String runPath({
     required String owner,

@@ -34,16 +34,14 @@ abstract final class WiroModelCatalog {
           ModelFieldOption(value: 'verse'),
         ],
       ),
+      // What the assistant is told lives in ConversationConfig, since it is
+      // an application's choice rather than something the schema fixes.
       ModelFieldDefinition(
         id: 'system_instructions',
         label: 'System instructions',
         kind: ModelFieldKind.textarea,
         isRequired: true,
         includeInFirstPass: true,
-        defaultValue:
-            'Respond in the language of the latest clear spoken utterance. '
-            'Allow intentional language changes. Ignore non-speech or '
-            'unclear audio instead of inferring words.',
       ),
       ModelFieldDefinition(
         id: 'transcription_model',
@@ -274,8 +272,4 @@ abstract final class WiroModelCatalog {
     mossTtsRealtime,
     voxcpm2,
   ];
-
-  static List<ModelDefinition> forDirection(RealtimeDirection direction) {
-    return all.where((model) => model.direction == direction).toList();
-  }
 }

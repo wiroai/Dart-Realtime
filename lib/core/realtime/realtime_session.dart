@@ -74,6 +74,10 @@ final class RealtimeSession implements RealtimeSessionClient {
   final RealtimeSessionMetricsCollector _metricsCollector =
       RealtimeSessionMetricsCollector();
 
+  /// Reused across frames; fifty audio frames a second would otherwise
+  /// allocate fifty throwaway stopwatches.
+  final Stopwatch _parseStopwatch = Stopwatch();
+
   StreamSubscription<Object?>? _socketSubscription;
   Future<void>? _connectFuture;
   Future<void>? _closeFuture;
@@ -119,12 +123,11 @@ final class RealtimeSession implements RealtimeSessionClient {
       return;
     }
     _sessionEndSent = true;
-    _socketClient.sendText(
-      jsonEncode({
-        'type': 'task_session_end',
-        'tasktoken': _taskToken,
-      }),
-    );
+    final payload = jsonEncode({
+      'type': 'task_session_end',
+      'tasktoken': _taskToken,
+    });
+    _socketClient.sendText(payload);
   }
 
   @override
@@ -191,25 +194,23 @@ final class RealtimeSession implements RealtimeSessionClient {
       return;
     }
     _subscriptionSent = true;
-    _socketClient.sendText(
-      jsonEncode({
-        'type': 'task_info',
-        'tasktoken': _taskToken,
-      }),
-    );
+    final payload = jsonEncode({
+      'type': 'task_info',
+      'tasktoken': _taskToken,
+    });
+    _socketClient.sendText(payload);
   }
 
   void _handleFrame(Object? frame) {
     if (_closed) {
       return;
     }
-    final stopwatch = Stopwatch()..start();
+    _parseStopwatch
+      ..reset()
+      ..start();
     final event = _normalizeEvent(_parser.parse(frame));
-    stopwatch.stop();
-    _metricsCollector.record(event, stopwatch.elapsedMicroseconds);
-    if (kDebugMode) {
-      debugPrint('Realtime event received: ${event.wireType}');
-    }
+    _parseStopwatch.stop();
+    _metricsCollector.record(event, _parseStopwatch.elapsedMicroseconds);
     _eventsController.add(event);
 
     switch (event) {
@@ -224,12 +225,15 @@ final class RealtimeSession implements RealtimeSessionClient {
         type: RealtimeEventType.postprocessEnded,
       ):
         unawaited(close());
-      case RealtimeErrorEvent():
-        _fail(const WiroSocketFailure());
       case RealtimeCancelEvent():
         _fail(const WiroCancellationFailure());
       case RealtimeMalformedEvent():
         _fail(const WiroProtocolFailure());
+      // A live task_error frame is the model's stderr — an interim log,
+      // not a verdict. Wiro's docs are explicit that the task may still
+      // succeed; a genuinely dead task shows itself by closing the
+      // socket, which the done handler already turns into a failure.
+      case RealtimeErrorEvent():
       case RealtimeStatusEvent():
       case RealtimeOutputEvent():
       case RealtimeBinaryEvent():
