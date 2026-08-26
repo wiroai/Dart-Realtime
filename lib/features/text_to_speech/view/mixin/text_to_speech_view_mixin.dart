@@ -49,6 +49,17 @@ mixin TextToSpeechViewMixin on State<TextToSpeechView> {
     );
   }
 
+  /// Leaving the tab is leaving the session: speech nobody is on the tab
+  /// to hear should not keep playing, and the task behind it should not
+  /// keep billing.
+  @override
+  void didUpdateWidget(TextToSpeechView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isVisible && !widget.isVisible) {
+      _stopActiveSession();
+    }
+  }
+
   @override
   void dispose() {
     _appLifecycleListener.dispose();

@@ -389,9 +389,9 @@ final class TextToSpeechSessionService implements SpeechSessionController {
       ):
         _appendProtocolEvent(event.wireType);
         _naturalCompletion ??= _completeNaturally(operationId);
+      // Interim stderr from the model; the session is still alive.
       case RealtimeErrorEvent():
         _appendProtocolEvent(event.wireType);
-        unawaited(_fail(operationId, const WiroSocketFailure()));
       case RealtimeCancelEvent():
         _appendProtocolEvent(event.wireType);
         unawaited(_fail(operationId, const WiroCancellationFailure()));

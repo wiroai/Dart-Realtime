@@ -49,6 +49,17 @@ mixin SpeechToTextViewMixin on State<SpeechToTextView> {
     );
   }
 
+  /// Leaving the tab is leaving the session: transcription has no idle
+  /// conversation to hold open, so an unwatched tab keeping the microphone
+  /// hot and the task billing is only a leak.
+  @override
+  void didUpdateWidget(SpeechToTextView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isVisible && !widget.isVisible) {
+      _stopActiveSession();
+    }
+  }
+
   @override
   void dispose() {
     _appLifecycleListener.dispose();

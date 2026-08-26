@@ -19,12 +19,20 @@ class TextToSpeechView extends StatefulWidget {
     required this.credentials,
     required this.audioSession,
     required this.sessionGuard,
+    this.isVisible = true,
     super.key,
   });
 
   final WiroCredentials credentials;
   final RealtimeAudioSession audioSession;
   final RealtimeSessionGuard sessionGuard;
+
+  /// Whether this destination is the one on screen.
+  ///
+  /// The destinations share one widget tree and stay mounted, so a running
+  /// speech task would otherwise keep playing and billing behind another
+  /// tab.
+  final bool isVisible;
 
   @override
   State<TextToSpeechView> createState() => _TextToSpeechViewState();
