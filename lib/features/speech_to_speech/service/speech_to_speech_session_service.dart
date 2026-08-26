@@ -29,6 +29,7 @@ import 'package:wiro_realtime/features/speech_to_speech/service/conversation_pla
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_recovery_policy.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_controller.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
+import 'package:wiro_realtime/features/speech_to_speech/service/conversation_suspension.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_transcript_parser.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voice_activity.dart';
 
@@ -201,6 +202,10 @@ final class SpeechToSpeechSessionService
     autoRestartDelay: autoRestartDelay,
     maxAutoRestarts: maxAutoRestarts,
   );
+  late final ConversationSuspension _suspension = ConversationSuspension(
+    gracePeriod: suspendGracePeriod,
+    onExpired: _onHoldExpired,
+  );
   final RealtimeOperationGuard _guard = RealtimeOperationGuard();
   final ProtocolEventLog _protocolLog = ProtocolEventLog();
   final SessionElapsedClock _elapsedClock = SessionElapsedClock();
@@ -216,8 +221,6 @@ final class SpeechToSpeechSessionService
   Future<void>? _stopOperation;
   Future<void>? _relaunchOperation;
   int _watchdogOperationId = 0;
-  Timer? _graceTimer;
-  DateTime? _suspendedAt;
   bool _naturalCompletionRunning = false;
 
   /// The parameter values the live task was created with.
@@ -491,7 +494,7 @@ final class SpeechToSpeechSessionService
     }
     // Half a handshake is not something worth coming back to, and a
     // configured zero says the speaker leaving is the same as hanging up.
-    if (suspendGracePeriod <= Duration.zero ||
+    if (!_suspension.holdsAnything ||
         _startOperation != null ||
         _relaunchOperation != null) {
       await stop();
@@ -517,8 +520,7 @@ final class SpeechToSpeechSessionService
     // Whoever is on screen now should be able to use the microphone; the
     // task is what is being held, not the hardware.
     _releaseLease();
-    _suspendedAt = DateTime.now();
-    _graceTimer = Timer(suspendGracePeriod, _expireHold);
+    _suspension.begin();
     _publish(
       _snapshot.copyWith(
         isSuspended: true,
@@ -533,13 +535,11 @@ final class SpeechToSpeechSessionService
     if (_guard.isDisposed || !_snapshot.isSuspended) {
       return;
     }
-    _cancelGraceTimer();
+    _suspension.cancel();
     // A frozen app runs no timers, so a hold can outlive its own deadline.
     // The clock decides whether the speaker is still expected, not the
     // timer that may never have fired.
-    final suspendedAt = _suspendedAt;
-    if (suspendedAt == null ||
-        DateTime.now().difference(suspendedAt) > suspendGracePeriod) {
+    if (_suspension.hasLapsed) {
       await _endHeldSession('hold_expired');
       return;
     }
@@ -549,12 +549,11 @@ final class SpeechToSpeechSessionService
       return;
     }
     _sessionLease = lease;
-    _suspendedAt = null;
+    _suspension.clear();
     await _runRelaunch('resume', reuseTask: true, prepareAudio: true);
   }
 
-  void _expireHold() {
-    _graceTimer = null;
+  void _onHoldExpired() {
     if (_guard.isDisposed || !_snapshot.isSuspended) {
       return;
     }
@@ -562,14 +561,9 @@ final class SpeechToSpeechSessionService
   }
 
   Future<void> _endHeldSession(String reason) async {
-    _suspendedAt = null;
+    _suspension.clear();
     _appendProtocolEvent(reason);
     await stop();
-  }
-
-  void _cancelGraceTimer() {
-    _graceTimer?.cancel();
-    _graceTimer = null;
   }
 
   Future<void> _runRelaunch(
@@ -913,7 +907,7 @@ final class SpeechToSpeechSessionService
     _guard.dispose();
     _micPipeline.dispose();
     _recovery.dispose();
-    _cancelGraceTimer();
+    _suspension.dispose();
     _bargeIn.dispose();
     _taskLauncher.cancelPendingRequest();
     _elapsedClock.stop();
