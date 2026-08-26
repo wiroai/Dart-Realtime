@@ -9,7 +9,7 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
-    - packages/flutter_voice_engine-0.0.1/**
+    - packages/wiro_voice_engine/**
 
 linter:
   rules:

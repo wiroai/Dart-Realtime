@@ -6,6 +6,15 @@ Official Wiro example for three realtime audio flows on Android and iOS:
 - Transcription: speech-to-text (`mistralai/voxtral-mini-4b-realtime-2602`)
 - Speech: text-to-speech (`openmoss/moss-tts-realtime`, `openbmb/voxcpm2`)
 
+## Make it yours
+
+`lib/app/config/conversation_config.dart` holds the persona, the voice, the
+model and the session time limit. Editing that file is the whole of turning
+this example into a product. `AGENTS.md` maps the rest of the repository for
+coding agents.
+
+## Credentials
+
 Credentials supplied through `--dart-define` are for local development only.
 They are compiled into the application binary. Do not distribute builds that
 contain real credentials. Production apps should authenticate through a
