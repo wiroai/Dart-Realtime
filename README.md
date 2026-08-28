@@ -16,15 +16,6 @@ speech-to-speech conversation, realtime transcription, and text-to-speech**
 
 </div>
 
-<!--
-DEMO VIDEO
-Drop the screen recording here. Easiest path: drag the .mp4 into this
-README while editing on GitHub — it uploads and inserts a
-user-attachments URL that renders as an inline player.
--->
-
-<!-- https://github.com/user-attachments/assets/VIDEO_ID -->
-
 ## What's inside
 
 Three realtime audio flows, each a tab in the app, each backed by a live
@@ -38,7 +29,7 @@ Wiro model over one WebSocket protocol:
 
 <!--
 SCREENSHOTS
-Export three portrait screenshots (one per tab) into doc/images/ and
+Export three portrait screenshots (one per tab) into docs/images/ and
 uncomment. ~260 px wide each sits nicely side by side.
 -->
 
@@ -51,9 +42,9 @@ uncomment. ~260 px wide each sits nicely side by side.
     <td align="center"><b>Speech</b></td>
   </tr>
   <tr>
-    <td><img src="doc/images/conversation.png" width="260" alt="Speech-to-speech conversation" /></td>
-    <td><img src="doc/images/transcription.png" width="260" alt="Realtime transcription" /></td>
-    <td><img src="doc/images/speech.png" width="260" alt="Text-to-speech" /></td>
+    <td><img src="docs/images/conversation.png" width="260" alt="Speech-to-speech conversation" /></td>
+    <td><img src="docs/images/transcription.png" width="260" alt="Realtime transcription" /></td>
+    <td><img src="docs/images/speech.png" width="260" alt="Text-to-speech" /></td>
   </tr>
 </table>
 </div>
@@ -83,6 +74,9 @@ uncomment. ~260 px wide each sits nicely side by side.
 - A **physical** Android or iOS device — simulators have no usable
   microphone path
 - A [Wiro project and API key](https://wiro.ai/panel/project/new)
+
+The iOS project uses Swift Package Manager — there is no Podfile and no
+CocoaPods setup to run. Use a Flutter version with SPM support enabled.
 
 ## Run
 
@@ -128,8 +122,12 @@ Common changes:
   lists.
 - **Tune the engineering parameters** — `parameters` overrides the
   catalog defaults for turn detection, audio formats, and rates.
-- **Ship only the conversation** — delete the other two feature folders;
-  `core/` is untouched. `AGENTS.md` has the exact steps.
+- **Ship only the conversation** — delete
+  `lib/features/speech_to_text/` and `lib/features/text_to_speech/`
+  (plus their `test/features/` folders), then remove the two
+  `NavigationDestination`s from
+  `lib/features/realtime_home/view/realtime_home_view.dart`. `core/` is
+  untouched.
 
 ## How a conversation runs
 
@@ -167,8 +165,6 @@ packages/
 
 `core/` has no dependency on any feature and covers the whole Wiro
 integration — it is the part worth lifting into your own app.
-[`AGENTS.md`](AGENTS.md) maps the repository in depth for coding agents
-and humans alike.
 
 ## Tests
 
