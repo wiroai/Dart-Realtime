@@ -27,13 +27,6 @@ Wiro model over one WebSocket protocol:
 | 📝 Transcription | [`mistralai/voxtral-mini-4b-realtime-2602`](https://wiro.ai/models) | Live speech-to-text as you talk |
 | 🔊 Speech | [`openmoss/moss-tts-realtime`](https://wiro.ai/models) | Streaming text-to-speech playback |
 
-<!--
-SCREENSHOTS
-Export three portrait screenshots (one per tab) into docs/images/ and
-uncomment. ~260 px wide each sits nicely side by side.
--->
-
-<!--
 <div align="center">
 <table>
   <tr>
@@ -48,7 +41,6 @@ uncomment. ~260 px wide each sits nicely side by side.
   </tr>
 </table>
 </div>
--->
 
 ## Features
 
