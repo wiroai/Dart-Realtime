@@ -76,6 +76,12 @@ final class SpeechToTextSessionService
   );
 
   TranscriptionSessionSnapshot _snapshot = const TranscriptionSessionSnapshot();
+
+  /// Utterances the model has moved past, joined for display.
+  String _confirmedTranscript = '';
+
+  /// The utterance still being refined by the model.
+  String _liveSegment = '';
   RealtimeSessionLease? _sessionLease;
   RealtimeSessionClient? _session;
   StreamSubscription<RealtimeEvent>? _eventSubscription;
@@ -97,21 +103,7 @@ final class SpeechToTextSessionService
     if (_guard.isDisposed || !_snapshot.sessionState.canStart) {
       return Future<void>.value();
     }
-    final lease = sessionGuard.acquire(
-      RealtimeSessionOwner.transcription,
-    );
-    if (lease == null) {
-      _publish(
-        _snapshot.copyWith(
-          status: ViewStatus.error,
-          sessionState: RealtimeSessionState.failure,
-          errorMessage: const WiroSessionBusyFailure().message,
-        ),
-      );
-      return Future<void>.value();
-    }
-    _sessionLease = lease;
-    final operation = _start();
+    final operation = _acquireAndStart();
     _startOperation = operation;
     return operation.whenComplete(() {
       if (identical(_startOperation, operation)) {
@@ -120,9 +112,47 @@ final class SpeechToTextSessionService
     });
   }
 
+  /// Waits out another feature's teardown before starting.
+  ///
+  /// Switching tabs ends the previous session, but its lease is released
+  /// a beat after the tap that lands here. Waiting turns that race into a
+  /// slightly longer connect instead of a busy error. The loading state is
+  /// published before the wait so a second tap cannot start twice.
+  Future<void> _acquireAndStart() async {
+    final operationId = _guard.begin();
+    _publish(
+      _snapshot.copyWith(
+        status: ViewStatus.loading,
+        sessionState: RealtimeSessionState.requestingPermission,
+        errorMessage: null,
+      ),
+    );
+    final lease = await sessionGuard.acquireWhenFree(
+      RealtimeSessionOwner.transcription,
+    );
+    if (!_guard.isCurrent(operationId)) {
+      sessionGuard.release(lease);
+      return;
+    }
+    if (lease == null) {
+      _publish(
+        _snapshot.copyWith(
+          status: ViewStatus.error,
+          sessionState: RealtimeSessionState.failure,
+          errorMessage: const WiroSessionBusyFailure().message,
+        ),
+      );
+      return;
+    }
+    _sessionLease = lease;
+    await _start();
+  }
+
   Future<void> _start() async {
     final operationId = _guard.begin();
     _protocolLog.clear();
+    _confirmedTranscript = '';
+    _liveSegment = '';
     _publish(
       _snapshot.copyWith(
         status: ViewStatus.loading,
@@ -275,6 +305,10 @@ final class SpeechToTextSessionService
     await _stopCapture();
     await _naturalCompletion;
     await audioSession.deactivate();
+    // The hardware is free from here on; only the protocol wind-down
+    // remains. Holding the lease through the terminal wait would block
+    // whichever feature the user already moved on to for those seconds.
+    _releaseLease();
 
     var shutdownTimedOut = false;
     final session = _session;
@@ -298,21 +332,20 @@ final class SpeechToTextSessionService
     _terminalCompleter = null;
     _naturalCompletion = null;
     _taskLauncher.release();
-    _releaseLease();
 
     if (!_guard.isCurrent(operationId)) {
       return;
     }
+    // A slow shutdown confirmation is not news the user can act on: the
+    // microphone is off, the transcript is already on screen, and the
+    // server winds down an abandoned task on its own. It stays in the
+    // protocol log as diagnostics and out of the user's way.
     _publish(
       _snapshot.copyWith(
-        status: shutdownTimedOut ? ViewStatus.error : ViewStatus.success,
-        sessionState: shutdownTimedOut
-            ? RealtimeSessionState.failure
-            : RealtimeSessionState.completed,
+        status: ViewStatus.success,
+        sessionState: RealtimeSessionState.completed,
         microphoneActive: false,
-        errorMessage: shutdownTimedOut
-            ? const WiroShutdownTimeoutFailure().message
-            : null,
+        errorMessage: null,
         protocolEvents: _protocolLog.add(
           shutdownTimedOut ? 'shutdown_timeout' : 'session_stopped',
         ),
@@ -325,6 +358,8 @@ final class SpeechToTextSessionService
     if (_guard.isDisposed || _snapshot.sessionState.isActive) {
       return;
     }
+    _confirmedTranscript = '';
+    _liveSegment = '';
     _publish(_snapshot.copyWith(transcript: ''));
   }
 
@@ -404,19 +439,41 @@ final class SpeechToTextSessionService
     }
   }
 
+  /// Folds one transcript event into the running text.
+  ///
+  /// The model streams each utterance progressively and starts over at the
+  /// next one, so a raw replace would leave only the final fragment of the
+  /// last sentence on screen. An event that extends the live utterance
+  /// refines it in place; an event that does not is a new utterance, and
+  /// the finished one moves into the confirmed text for good.
   void _handleOutput(RealtimeOutputEvent event) {
     final message = event.message;
     if (!message.startsWith(_transcriptPrefix)) {
       _appendProtocolEvent(event.wireType);
       return;
     }
+    final text = message.substring(_transcriptPrefix.length).trim();
+    if (text.isEmpty) {
+      _appendProtocolEvent(event.wireType);
+      return;
+    }
+    if (text.startsWith(_liveSegment) || _liveSegment.isEmpty) {
+      _liveSegment = text;
+    } else if (!_liveSegment.startsWith(text)) {
+      _confirmedTranscript = _joinedTranscript;
+      _liveSegment = text;
+    }
     _publish(
       _snapshot.copyWith(
-        transcript: message.substring(_transcriptPrefix.length),
+        transcript: _joinedTranscript,
         protocolEvents: _protocolLog.add(event.wireType),
       ),
     );
   }
+
+  String get _joinedTranscript => _confirmedTranscript.isEmpty
+      ? _liveSegment
+      : '$_confirmedTranscript $_liveSegment';
 
   Future<void> _handleStreamEnded(int operationId) async {
     await _stopCapture();

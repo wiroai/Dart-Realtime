@@ -31,6 +31,59 @@ void main() {
     expect(guard.value, same(second));
   });
 
+  test('acquireWhenFree acquires immediately when nothing is held', () async {
+    final guard = RealtimeSessionGuard();
+    addTearDown(guard.dispose);
+
+    final lease = await guard.acquireWhenFree(
+      RealtimeSessionOwner.conversation,
+    );
+
+    expect(lease, isNotNull);
+    expect(guard.value, same(lease));
+  });
+
+  test('acquireWhenFree waits out the departing session', () async {
+    final guard = RealtimeSessionGuard();
+    addTearDown(guard.dispose);
+    final departing = guard.acquire(RealtimeSessionOwner.conversation);
+
+    final pending = guard.acquireWhenFree(
+      RealtimeSessionOwner.transcription,
+    );
+    guard.release(departing);
+
+    final lease = await pending;
+    expect(lease, isNotNull);
+    expect(lease!.owner, RealtimeSessionOwner.transcription);
+    expect(guard.value, same(lease));
+  });
+
+  test('acquireWhenFree gives up once nothing lets go', () async {
+    final guard = RealtimeSessionGuard();
+    addTearDown(guard.dispose);
+    guard.acquire(RealtimeSessionOwner.conversation);
+
+    final lease = await guard.acquireWhenFree(
+      RealtimeSessionOwner.speech,
+      timeout: const Duration(milliseconds: 20),
+    );
+
+    expect(lease, isNull);
+  });
+
+  test('disposal wakes a pending acquireWhenFree with nothing', () async {
+    final guard = RealtimeSessionGuard()
+      ..acquire(RealtimeSessionOwner.conversation);
+
+    final pending = guard.acquireWhenFree(
+      RealtimeSessionOwner.speech,
+    );
+    guard.dispose();
+
+    expect(await pending, isNull);
+  });
+
   test('ignores asynchronous release after disposal', () {
     final guard = RealtimeSessionGuard();
     final lease = guard.acquire(RealtimeSessionOwner.conversation);

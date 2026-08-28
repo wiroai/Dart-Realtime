@@ -3,39 +3,33 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
 import 'package:wiro_realtime/core/audio/record_pcm_capture_source.dart';
-import 'package:wiro_realtime/core/auth/wiro_auth_headers.dart';
-import 'package:wiro_realtime/core/network/dio_wiro_http_client.dart';
-import 'package:wiro_realtime/core/network/wiro_api_client.dart';
-import 'package:wiro_realtime/core/network/wiro_http_client.dart';
-import 'package:wiro_realtime/core/realtime/realtime_session.dart';
+import 'package:wiro_realtime/core/realtime/realtime_session_dependencies.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/core/realtime/web_socket_realtime_socket_client.dart';
 import 'package:wiro_realtime/features/speech_to_text/service/speech_to_text_session_service.dart';
 import 'package:wiro_realtime/features/speech_to_text/view/speech_to_text_view.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/speech_to_text_view_model.dart';
 
 mixin SpeechToTextViewMixin on State<SpeechToTextView> {
   late final SpeechToTextViewModel speechToTextViewModel;
-  late final WiroHttpClient _httpClient;
+  late final RealtimeSessionDependencies _dependencies;
   late final AppLifecycleListener _appLifecycleListener;
 
   @override
   void initState() {
     super.initState();
-    _httpClient = DioWiroHttpClient();
+    _dependencies = RealtimeSessionDependencies(
+      credentials: widget.credentials,
+      // The Voxtral worker cold-starts well past the default ready-wait,
+      // and the socket replays nothing to a subscriber that arrives
+      // after an event fired, so the first subscription has to outlive
+      // the spin-up.
+      readyTimeout: const Duration(seconds: 120),
+    );
     speechToTextViewModel = SpeechToTextViewModel(
       sessionService: SpeechToTextSessionService(
         audioSession: widget.audioSession,
-        apiClient: DefaultWiroApiClient(
-          _httpClient,
-          WiroAuthHeaders(credentials: widget.credentials),
-        ),
-        sessionFactory: ({required taskId, required taskToken}) =>
-            RealtimeSession(
-              socketClient: WebSocketRealtimeSocketClient(),
-              taskId: taskId,
-              taskToken: taskToken,
-            ),
+        apiClient: _dependencies.apiClient,
+        sessionFactory: _dependencies.createSession,
         recorder: BufferedPcmAudioRecorder(
           RecordPcmCaptureSource(),
         ),
@@ -64,7 +58,7 @@ mixin SpeechToTextViewMixin on State<SpeechToTextView> {
   void dispose() {
     _appLifecycleListener.dispose();
     speechToTextViewModel.dispose();
-    _httpClient.close();
+    _dependencies.close();
     super.dispose();
   }
 

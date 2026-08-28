@@ -51,6 +51,7 @@ final class SpeechToSpeechSessionService
     this.model = ConversationConfig.model,
     String persona = ConversationConfig.persona,
     String voice = ConversationConfig.voice,
+    Map<String, String> parameterOverrides = ConversationConfig.parameters,
     this.maxSessionDuration = ConversationConfig.maxSessionDuration,
     this.suspendGracePeriod = ConversationConfig.suspendGracePeriod,
     this.reconnectTimeout = const Duration(seconds: 4),
@@ -65,7 +66,11 @@ final class SpeechToSpeechSessionService
     this.noiseGate,
   }) : parameters = ModelParameterValues(
          model.firstPassFields,
+         // The named fields spread last: the persona and the voice have
+         // dedicated config entries, so a stray duplicate in the map
+         // cannot silently contradict them.
          overrides: {
+           ...parameterOverrides,
            'system_instructions': persona,
            'voice': voice,
          },
@@ -121,12 +126,12 @@ final class SpeechToSpeechSessionService
   /// audio plays on from where it was silenced.
   ///
   /// A hold that neither confirms as speech nor drains to silence within
-  /// this window is ambiguous ongoing noise — steady typing, most often —
-  /// and the answer is worth more than the ambiguity.
+  /// this window is ambiguous ongoing noise, and the answer is worth
+  /// more than the ambiguity.
   final Duration interruptHoldTimeout;
 
-  /// How long new holds rest after one proved to be noise, so a typing
-  /// session cannot stutter playback with a hold per keystroke. Sustained
+  /// How long new holds rest after one proved to be noise, so recurring
+  /// noise bursts cannot stutter playback with a hold apiece. Sustained
   /// speech still cuts through during the rest: only the instant-pause
   /// stage is suppressed, never the confirmed interruption.
   final Duration interruptHoldCooldown;
@@ -223,14 +228,6 @@ final class SpeechToSpeechSessionService
   int _watchdogOperationId = 0;
   bool _naturalCompletionRunning = false;
 
-  /// The parameter values the live task was created with.
-  ///
-  /// Parameters are only read while a task is being created, so editing them
-  /// mid-conversation changes nothing until the session is rebuilt. Keeping
-  /// what was actually sent is what lets [applyParameterChanges] tell an
-  /// edited form from an untouched one.
-  Map<String, String> _launchedParameters = const {};
-
   @override
   Stream<ConversationSessionSnapshot> get snapshots => _snapshots.stream;
 
@@ -246,9 +243,37 @@ final class SpeechToSpeechSessionService
       return Future<void>.value();
     }
     _recovery.cancelAutoRestart();
-    final lease = sessionGuard.acquire(
+    final operation = _acquireAndStart();
+    _startOperation = operation;
+    return operation.whenComplete(() {
+      if (identical(_startOperation, operation)) {
+        _startOperation = null;
+      }
+    });
+  }
+
+  /// Waits out another feature's teardown before starting.
+  ///
+  /// Switching tabs ends the previous session, but its lease is released
+  /// a beat after the tap that lands here. Waiting turns that race into a
+  /// slightly longer connect instead of a busy error. The loading state is
+  /// published before the wait so a second tap cannot start twice.
+  Future<void> _acquireAndStart() async {
+    final operationId = _guard.begin();
+    _publish(
+      _snapshot.copyWith(
+        status: ViewStatus.loading,
+        sessionState: RealtimeSessionState.requestingPermission,
+        errorMessage: null,
+      ),
+    );
+    final lease = await sessionGuard.acquireWhenFree(
       RealtimeSessionOwner.conversation,
     );
+    if (!_guard.isCurrent(operationId)) {
+      sessionGuard.release(lease);
+      return;
+    }
     if (lease == null) {
       _publish(
         _snapshot.copyWith(
@@ -257,17 +282,11 @@ final class SpeechToSpeechSessionService
           errorMessage: const WiroSessionBusyFailure().message,
         ),
       );
-      return Future<void>.value();
+      return;
     }
     _sessionLease = lease;
     _recovery.resetRetries();
-    final operation = _start(isRetry: false);
-    _startOperation = operation;
-    return operation.whenComplete(() {
-      if (identical(_startOperation, operation)) {
-        _startOperation = null;
-      }
-    });
+    await _start(isRetry: false);
   }
 
   Future<void> _start({required bool isRetry}) async {
@@ -394,6 +413,10 @@ final class SpeechToSpeechSessionService
     noiseGate?.reset();
     await _naturalCompletion;
     await audioSession.deactivate();
+    // The hardware is free from here on; only the protocol wind-down
+    // remains. Holding the lease through the terminal wait would block
+    // whichever feature the user already moved on to for those seconds.
+    _releaseLease();
 
     var shutdownTimedOut = false;
     var endedCleanly = false;
@@ -426,22 +449,21 @@ final class SpeechToSpeechSessionService
     } else {
       _taskLauncher.terminateBestEffort();
     }
-    _releaseLease();
 
     if (!_guard.isCurrent(operationId)) {
       return;
     }
+    // A slow shutdown confirmation is not news the user can act on: the
+    // microphone is off, the conversation is over, and the server winds
+    // down an abandoned task on its own. It stays in the protocol log as
+    // diagnostics and out of the user's way.
     _publish(
       _snapshot.copyWith(
-        status: shutdownTimedOut ? ViewStatus.error : ViewStatus.success,
-        sessionState: shutdownTimedOut
-            ? RealtimeSessionState.failure
-            : RealtimeSessionState.completed,
+        status: ViewStatus.success,
+        sessionState: RealtimeSessionState.completed,
         isSuspended: false,
         microphoneActive: false,
-        errorMessage: shutdownTimedOut
-            ? const WiroShutdownTimeoutFailure().message
-            : null,
+        errorMessage: null,
         protocolEvents: _protocolLog.add(
           shutdownTimedOut ? 'shutdown_timeout' : 'session_stopped',
         ),
@@ -466,30 +488,16 @@ final class SpeechToSpeechSessionService
   }
 
   @override
-  Future<void> applyParameterChanges() {
-    if (_guard.isDisposed) {
-      return Future<void>.value();
-    }
-    final pending = _relaunchOperation;
-    if (pending != null) {
-      return pending;
-    }
-    // An idle session reads the edited values by itself the next time it
-    // creates a task; only a live one has to be rebuilt to notice them.
-    if (!_snapshot.sessionState.isActive) {
-      return Future<void>.value();
-    }
-    if (mapEquals(parameters.snapshot(), _launchedParameters)) {
-      return Future<void>.value();
-    }
-    return _runRelaunch('settings_change');
-  }
-
-  @override
   Future<void> suspend() async {
-    if (_guard.isDisposed ||
-        _snapshot.isSuspended ||
-        !_snapshot.sessionState.isActive) {
+    if (_guard.isDisposed) {
+      return;
+    }
+    // A restart armed by a failure must not outlive the screen: firing
+    // off screen would reopen the microphone and the billing for a
+    // conversation nobody is watching, and hold the session lease
+    // against whichever feature is on screen now.
+    _recovery.cancelAutoRestart();
+    if (_snapshot.isSuspended || !_snapshot.sessionState.isActive) {
       return;
     }
     // Half a handshake is not something worth coming back to, and a
@@ -543,9 +551,18 @@ final class SpeechToSpeechSessionService
       await _endHeldSession('hold_expired');
       return;
     }
-    final lease = sessionGuard.acquire(RealtimeSessionOwner.conversation);
+    // Returning to the tab races the departing feature's teardown the
+    // same way a fresh start does, so the held task is only given up
+    // once the guard says nothing is letting go.
+    final lease = await sessionGuard.acquireWhenFree(
+      RealtimeSessionOwner.conversation,
+    );
     if (lease == null) {
       await _endHeldSession('hold_lost_to_another_session');
+      return;
+    }
+    if (!_snapshot.isSuspended) {
+      sessionGuard.release(lease);
       return;
     }
     _sessionLease = lease;
@@ -686,20 +703,12 @@ final class SpeechToSpeechSessionService
     }
   }
 
-  /// Creates the task and records the values it was created with, so a later
-  /// edit of the same form can be recognised as a real change.
-  Future<WiroRunResult?> _launchTask(int operationId) async {
-    final requested = parameters.snapshot();
-    final runResult = await _taskLauncher.launch(
+  Future<WiroRunResult?> _launchTask(int operationId) {
+    return _taskLauncher.launch(
       model: model,
       parameters: parameters.requestSnapshot(),
       isStillWanted: () => _guard.isCurrent(operationId),
     );
-    if (runResult == null) {
-      return null;
-    }
-    _launchedParameters = requested;
-    return runResult;
   }
 
   /// Subscribes to [runResult]'s task and waits for its stream to open.

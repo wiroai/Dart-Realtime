@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:wiro_realtime/app/extensions/duration_extension.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
@@ -25,9 +26,7 @@ class ElapsedTimeLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final minutes = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
-    final seconds = elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
-    return Text('Elapsed $minutes:$seconds');
+    return Text('Elapsed ${elapsed.clockLabel}');
   }
 }
 

@@ -81,12 +81,34 @@ void main() {
     expect(activity.userInterrupting, isTrue);
   });
 
-  test('keyboard-like clicks never confirm and their evidence drains', () {
+  test('syllable dips above the sustain level keep the evidence', () {
     activity.addAiChunk(_pcm(amplitude: 8000, milliseconds: 2000));
 
-    // Two loud chunks then a longer gap, the cadence of typing: the leaky
-    // counter drains in each gap and never approaches the confirm target.
-    for (var click = 0; click < 6; click++) {
+    // Three loud chunks raise the suspicion, then the voice dips between
+    // syllables: well under the entry bar, well over room quiet. The
+    // streak must ride the dip instead of draining, or the sentence
+    // never reaches the confirm target and the hold resumes mid-speech.
+    for (var index = 0; index < 3; index++) {
+      activity.addUserChunk(_pcm(amplitude: 20000, milliseconds: 20));
+    }
+    for (var index = 0; index < 5; index++) {
+      activity.addUserChunk(_pcm(amplitude: 1500, milliseconds: 20));
+    }
+    expect(activity.userMaybeInterrupting, isTrue);
+
+    for (var index = 0; index < 5; index++) {
+      activity.addUserChunk(_pcm(amplitude: 20000, milliseconds: 20));
+    }
+
+    expect(activity.userInterrupting, isTrue);
+  });
+
+  test('noise bursts never confirm and their evidence drains', () {
+    activity.addAiChunk(_pcm(amplitude: 8000, milliseconds: 2000));
+
+    // Two loud chunks then a longer gap, the cadence of bursty noise: the
+    // leaky counter drains in each gap and never nears the confirm target.
+    for (var burst = 0; burst < 6; burst++) {
       activity
         ..addUserChunk(_pcm(amplitude: 20000, milliseconds: 20))
         ..addUserChunk(_pcm(amplitude: 20000, milliseconds: 20));

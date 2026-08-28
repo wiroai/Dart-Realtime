@@ -11,7 +11,6 @@ enum WiroFailureCode {
   socketConnectTimeout,
   realtimeProtocol,
   streamReadyTimeout,
-  shutdownTimeout,
   sessionBusy,
 }
 
@@ -123,14 +122,6 @@ final class WiroReadyTimeoutFailure extends WiroFailure {
     : super(
         code: WiroFailureCode.streamReadyTimeout,
         message: 'The Wiro realtime stream did not become ready in time.',
-      );
-}
-
-final class WiroShutdownTimeoutFailure extends WiroFailure {
-  const WiroShutdownTimeoutFailure()
-    : super(
-        code: WiroFailureCode.shutdownTimeout,
-        message: 'The Wiro session did not shut down cleanly.',
       );
 }
 

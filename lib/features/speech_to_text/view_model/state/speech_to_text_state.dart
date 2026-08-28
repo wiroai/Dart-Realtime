@@ -11,39 +11,27 @@ final class SpeechToTextState extends Equatable {
     this.sessionState = RealtimeSessionState.idle,
     this.elapsed = Duration.zero,
     this.transcript = '',
-    this.microphoneActive = false,
     this.errorMessage,
-    this.protocolEvents = const [],
-    this.protocolExpanded = false,
   });
 
   final RealtimeSessionState sessionState;
   final Duration elapsed;
   final String transcript;
-  final bool microphoneActive;
   final String? errorMessage;
-  final List<String> protocolEvents;
-  final bool protocolExpanded;
 
   SpeechToTextState copyWith({
     RealtimeSessionState? sessionState,
     Duration? elapsed,
     String? transcript,
-    bool? microphoneActive,
     Object? errorMessage = _unset,
-    List<String>? protocolEvents,
-    bool? protocolExpanded,
   }) {
     return SpeechToTextState(
       sessionState: sessionState ?? this.sessionState,
       elapsed: elapsed ?? this.elapsed,
       transcript: transcript ?? this.transcript,
-      microphoneActive: microphoneActive ?? this.microphoneActive,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
           : errorMessage as String?,
-      protocolEvents: protocolEvents ?? this.protocolEvents,
-      protocolExpanded: protocolExpanded ?? this.protocolExpanded,
     );
   }
 
@@ -52,10 +40,7 @@ final class SpeechToTextState extends Equatable {
     sessionState,
     elapsed,
     transcript,
-    microphoneActive,
     errorMessage,
-    protocolEvents,
-    protocolExpanded,
   ];
 }
 

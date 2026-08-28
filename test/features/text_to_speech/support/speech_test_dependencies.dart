@@ -23,6 +23,7 @@ final class SpeechTestDependencies {
     bool ignoreRunCancellation = false,
     bool completeSessionEnd = true,
     Completer<void>? playbackCompleter,
+    int sessionConnectFailures = 0,
   }) : audioSession = FakeRealtimeAudioSession(preparationResult),
        apiClient = FakeWiroApiClient(
          runCompleter: runCompleter,
@@ -31,6 +32,7 @@ final class SpeechTestDependencies {
        player = FakePcmAudioPlayer(playbackCompleter),
        session = FakeRealtimeSession(
          completeSessionEnd: completeSessionEnd,
+         connectFailures: sessionConnectFailures,
        );
 
   final FakeRealtimeAudioSession audioSession;
@@ -53,6 +55,7 @@ final class SpeechTestDependencies {
       sessionGuard: sessionGuard,
       model: model ?? WiroModelCatalog.mossTtsRealtime,
       terminalTimeout: Duration.zero,
+      connectRetryDelay: Duration.zero,
     );
   }
 }
@@ -257,9 +260,16 @@ final class FakePcmAudioPlayer implements PcmAudioPlayer {
 }
 
 final class FakeRealtimeSession implements RealtimeSessionClient {
-  FakeRealtimeSession({required this.completeSessionEnd});
+  FakeRealtimeSession({
+    required this.completeSessionEnd,
+    this.connectFailures = 0,
+  });
 
   final bool completeSessionEnd;
+
+  /// Connect attempts that throw before one succeeds, standing in for a
+  /// server that drops the subscriber while the task spins up.
+  int connectFailures;
   final StreamController<RealtimeEvent> _events =
       StreamController<RealtimeEvent>.broadcast(sync: true);
   int connectCalls = 0;
@@ -283,6 +293,13 @@ final class FakeRealtimeSession implements RealtimeSessionClient {
   @override
   Future<void> connect() async {
     connectCalls++;
+    if (connectFailures > 0) {
+      connectFailures--;
+      throw const WiroSocketFailure();
+    }
+    // The one fake stands in for every session the factory hands out, so
+    // a successful connect reopens it after a failed attempt closed it.
+    _closed = false;
     _ready = true;
   }
 

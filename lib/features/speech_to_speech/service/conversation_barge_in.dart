@@ -5,7 +5,7 @@ import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voi
 
 /// Two-stage barge-in: a loud moment silences the assistant while keeping
 /// its audio; only input that sustains like speech commits the cut, while
-/// a keyboard burst hands the audio back from where it stopped.
+/// a noise burst hands the audio back from where it stopped.
 ///
 /// The hold deadline runs on its own timer so a mute or a stalling mic
 /// mid-hold still resolves, rather than waiting on the next chunk.
@@ -76,7 +76,7 @@ final class ConversationBargeIn {
     onProtocolEvent('assistant_interrupted');
   }
 
-  /// The suspected interruption faded the way a keystroke does: the held
+  /// The suspected interruption faded the way noise does: the held
   /// audio goes back to the speaker from the point it was silenced, and
   /// the playback model is rebuilt around what is actually playing now.
   void _resumeHeldTurn() {

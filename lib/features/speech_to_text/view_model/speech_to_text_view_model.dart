@@ -10,8 +10,8 @@ import 'package:wiro_realtime/features/speech_to_text/view_model/state/speech_to
 
 /// Projects a transcription session onto view state.
 ///
-/// Session commands are delegated to [sessionService]. This class owns only
-/// visual state such as whether the protocol panel is expanded.
+/// Session commands are delegated to [sessionService]; nothing the screen
+/// draws lives anywhere but the state.
 final class SpeechToTextViewModel extends BaseViewModel<SpeechToTextState> {
   SpeechToTextViewModel({required this.sessionService})
     : super(const SpeechToTextState()) {
@@ -23,8 +23,6 @@ final class SpeechToTextViewModel extends BaseViewModel<SpeechToTextState> {
 
   late final StreamSubscription<TranscriptionSessionSnapshot>
   _snapshotSubscription;
-
-  bool _protocolPanelRevealed = false;
 
   /// The one model this screen transcribes with; it never changes, so it
   /// lives outside the rebuilding state.
@@ -42,10 +40,6 @@ final class SpeechToTextViewModel extends BaseViewModel<SpeechToTextState> {
     sessionService.clearTranscript();
   }
 
-  void toggleProtocolPanel() {
-    emit(state.copyWith(protocolExpanded: !state.protocolExpanded));
-  }
-
   @override
   void dispose() {
     unawaited(_snapshotSubscription.cancel());
@@ -54,17 +48,12 @@ final class SpeechToTextViewModel extends BaseViewModel<SpeechToTextState> {
   }
 
   void _applySnapshot(TranscriptionSessionSnapshot snapshot) {
-    final revealNow = snapshot.revealProtocolPanel && !_protocolPanelRevealed;
-    _protocolPanelRevealed = snapshot.revealProtocolPanel;
     emit(
       state.copyWith(
         sessionState: snapshot.sessionState,
         elapsed: snapshot.elapsed,
         transcript: snapshot.transcript,
-        microphoneActive: snapshot.microphoneActive,
         errorMessage: snapshot.errorMessage,
-        protocolEvents: snapshot.protocolEvents,
-        protocolExpanded: revealNow || state.protocolExpanded,
       ),
     );
   }

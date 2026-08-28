@@ -46,9 +46,6 @@ final class SpeechToSpeechViewModel extends BaseViewModel<SpeechToSpeechState> {
 
   Future<void> changeVoice(String voice) => sessionService.changeVoice(voice);
 
-  Future<void> applyParameterChanges() =>
-      sessionService.applyParameterChanges();
-
   /// The speaker left the conversation on screen: hold their task quietly
   /// instead of hanging up on them.
   Future<void> suspend() => sessionService.suspend();

@@ -184,28 +184,34 @@ final class PluginRealtimeAudioSession implements RealtimeAudioSession {
         ),
         androidWillPauseWhenDucked: true,
       ),
-      RealtimeAudioProfile.transcription => const AudioSessionConfiguration(
-        avAudioSessionCategory: AVAudioSessionCategory.record,
+      // The same voice-processing path the conversation uses, because it is
+      // the one proven to deliver intelligible speech. `measurement` mode
+      // was tried here first and turns off the OS input processing — on
+      // real devices the microphone came through near-silent and the model
+      // transcribed nothing.
+      RealtimeAudioProfile.transcription => AudioSessionConfiguration(
+        avAudioSessionCategory: AVAudioSessionCategory.playAndRecord,
         avAudioSessionCategoryOptions:
-            AVAudioSessionCategoryOptions.allowBluetooth,
-        avAudioSessionMode: AVAudioSessionMode.measurement,
+            AVAudioSessionCategoryOptions.allowBluetooth |
+            AVAudioSessionCategoryOptions.defaultToSpeaker,
+        avAudioSessionMode: AVAudioSessionMode.voiceChat,
         avAudioSessionSetActiveOptions:
             AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
-        androidAudioAttributes: AndroidAudioAttributes(
+        androidAudioAttributes: const AndroidAudioAttributes(
           contentType: AndroidAudioContentType.speech,
           usage: AndroidAudioUsage.voiceCommunication,
         ),
         androidWillPauseWhenDucked: true,
       ),
-      RealtimeAudioProfile.speech => AudioSessionConfiguration(
+      // No category options: `playback` reaches Bluetooth and AirPlay on
+      // its own, and naming those options is only legal with
+      // `playAndRecord` — iOS fails the whole configure call otherwise.
+      RealtimeAudioProfile.speech => const AudioSessionConfiguration(
         avAudioSessionCategory: AVAudioSessionCategory.playback,
-        avAudioSessionCategoryOptions:
-            AVAudioSessionCategoryOptions.allowBluetoothA2dp |
-            AVAudioSessionCategoryOptions.allowAirPlay,
         avAudioSessionMode: AVAudioSessionMode.spokenAudio,
         avAudioSessionSetActiveOptions:
             AVAudioSessionSetActiveOptions.notifyOthersOnDeactivation,
-        androidAudioAttributes: const AndroidAudioAttributes(
+        androidAudioAttributes: AndroidAudioAttributes(
           contentType: AndroidAudioContentType.speech,
           usage: AndroidAudioUsage.media,
         ),

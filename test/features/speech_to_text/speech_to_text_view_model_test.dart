@@ -50,9 +50,7 @@ void main() {
         sessionState: RealtimeSessionState.streaming,
         elapsed: Duration(seconds: 7),
         transcript: 'hello',
-        microphoneActive: true,
         errorMessage: 'boom',
-        protocolEvents: ['first', 'second'],
       ),
     );
 
@@ -60,9 +58,7 @@ void main() {
     expect(state.sessionState, RealtimeSessionState.streaming);
     expect(state.elapsed, const Duration(seconds: 7));
     expect(state.transcript, 'hello');
-    expect(state.microphoneActive, isTrue);
     expect(state.errorMessage, 'boom');
-    expect(state.protocolEvents, ['first', 'second']);
   });
 
   test('clearing an error message propagates the null', () {
@@ -76,48 +72,6 @@ void main() {
     expect(harness.viewModel.state.errorMessage, isNull);
   });
 
-  test('a reveal request opens the protocol panel', () {
-    final harness = build();
-
-    harness.controller.publish(
-      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
-    );
-
-    expect(harness.viewModel.state.protocolExpanded, isTrue);
-  });
-
-  test('a collapsed panel stays closed while reveal holds', () {
-    final harness = build();
-    harness.controller.publish(
-      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
-    );
-
-    harness.viewModel.toggleProtocolPanel();
-    harness.controller.publish(
-      const TranscriptionSessionSnapshot(
-        revealProtocolPanel: true,
-        transcript: 'new state',
-      ),
-    );
-
-    expect(harness.viewModel.state.protocolExpanded, isFalse);
-  });
-
-  test('a later failure reopens a panel the user closed', () {
-    final harness = build();
-    harness.controller.publish(
-      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
-    );
-    harness.viewModel.toggleProtocolPanel();
-
-    harness.controller.publish(const TranscriptionSessionSnapshot());
-    harness.controller.publish(
-      const TranscriptionSessionSnapshot(revealProtocolPanel: true),
-    );
-
-    expect(harness.viewModel.state.protocolExpanded, isTrue);
-  });
-
   test('commands are delegated to the session', () async {
     final harness = build();
 
@@ -128,15 +82,6 @@ void main() {
     expect(harness.controller.startCalls, 1);
     expect(harness.controller.stopCalls, 1);
     expect(harness.controller.clearCalls, 1);
-  });
-
-  test('toggling the panel does not call the session', () {
-    final harness = build();
-
-    harness.viewModel.toggleProtocolPanel();
-
-    expect(harness.viewModel.state.protocolExpanded, isTrue);
-    expect(harness.controller.commandCalls, 0);
   });
 
   test('dispose releases the session and stops listening', () {
@@ -161,8 +106,6 @@ final class FakeTranscriptionSessionController
   int stopCalls = 0;
   int clearCalls = 0;
   int disposeCalls = 0;
-
-  int get commandCalls => startCalls + stopCalls + clearCalls;
 
   bool get hasListeners => _snapshots.hasListener;
 

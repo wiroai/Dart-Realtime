@@ -104,6 +104,35 @@ void main() {
     );
   });
 
+  test('resubscribes to a task the socket dropped while spinning up',
+      () async {
+    final dependencies = SpeechTestDependencies(sessionConnectFailures: 2);
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    service.promptNotifier.value = 'Hello';
+
+    await service.start();
+
+    expect(dependencies.session.connectCalls, 3);
+    expect(dependencies.apiClient.terminatedTaskIds, isEmpty);
+    expect(service.snapshot.sessionState, RealtimeSessionState.streaming);
+    expect(service.snapshot.protocolEvents, contains('socket_reconnect:1'));
+  });
+
+  test('a task that never streams fails once the retry budget is spent',
+      () async {
+    final dependencies = SpeechTestDependencies(sessionConnectFailures: 99);
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    service.promptNotifier.value = 'Hello';
+
+    await service.start();
+
+    expect(dependencies.session.connectCalls, 8);
+    expect(service.snapshot.sessionState, RealtimeSessionState.failure);
+    expect(dependencies.apiClient.terminatedTaskIds, ['task-id']);
+  });
+
   test('queues PCM in FIFO and drains before natural completion', () async {
     final drain = Completer<void>();
     final dependencies = SpeechTestDependencies(
@@ -214,7 +243,7 @@ void main() {
     expect(dependencies.session.connectCalls, 0);
   });
 
-  test('reports terminal shutdown timeout', () async {
+  test('a slow shutdown confirmation completes without an error', () async {
     final dependencies = SpeechTestDependencies(
       completeSessionEnd: false,
     );
@@ -225,7 +254,9 @@ void main() {
 
     await service.stop();
 
-    expect(service.snapshot.status, ViewStatus.error);
+    expect(service.snapshot.status, ViewStatus.success);
+    expect(service.snapshot.sessionState, RealtimeSessionState.completed);
+    expect(service.snapshot.errorMessage, isNull);
     expect(service.snapshot.protocolEvents, contains('shutdown_timeout'));
   });
 

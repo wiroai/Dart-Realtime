@@ -83,14 +83,15 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
   final Duration maxNativeBufferDuration;
   final Duration backpressurePollInterval;
 
-  /// How long [complete] waits for the queued tail to actually be heard.
+  /// How long [complete] tolerates a sink that stopped consuming.
   ///
-  /// Draining is bounded by the queue and the native buffer, so a healthy
-  /// sink finishes in a second or two. A sink that stopped consuming never
-  /// finishes at all — an engine torn down under a route change, a task the
-  /// server has just ended — and waiting on it forever costs far more than
-  /// the tail: the screen keeps showing a live conversation long after the
-  /// microphone has stopped.
+  /// The bound guards progress, not total duration: a queued tail is worth
+  /// waiting for however long it plays — a text-to-speech tail can hold
+  /// minutes of audio — as long as chunks keep reaching the sink. A sink
+  /// that stopped consuming never makes progress again — an engine torn
+  /// down under a route change, a task the server has just ended — and
+  /// waiting on it forever costs far more than the tail: the screen keeps
+  /// showing a live session long after the audio has stopped.
   final Duration drainTimeout;
   final StreamController<AudioPlaybackFailure> _failureController =
       StreamController<AudioPlaybackFailure>.broadcast(sync: true);
@@ -107,6 +108,7 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
   int _maximumFeedLatencyMicros = 0;
   int _queueHighWaterMarkInChunks = 0;
   int _underrunCount = 0;
+  int _consumedChunks = 0;
 
   @override
   bool get isPlaying => _playing;
@@ -140,10 +142,10 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
     }
 
     try {
-      if (!_initialized) {
-        await _sink.initialize();
-        _initialized = true;
-      }
+      // The sink may discard its native player on stop, so every start
+      // re-initializes; the call is idempotent while a player exists.
+      await _sink.initialize();
+      _initialized = true;
       final queue = BoundedPcmQueue(
         capacityInChunks: queueCapacityInChunks,
       );
@@ -205,7 +207,10 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
     }
     _queue?.close();
     try {
-      await _worker?.timeout(drainTimeout);
+      final worker = _worker;
+      if (worker != null) {
+        await _drainWhileProgressing(worker);
+      }
       if (!_playing || _disposed) {
         return;
       }
@@ -219,6 +224,28 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
       _abandonTail();
     } on Object {
       _reportFailure();
+    }
+  }
+
+  /// Waits out the queued tail for as long as the sink keeps consuming.
+  ///
+  /// Throws [TimeoutException] once no chunk has been fed for
+  /// [drainTimeout], which is what a stalled sink looks like from here.
+  Future<void> _drainWhileProgressing(Future<void> worker) async {
+    final idle = Stopwatch()..start();
+    var lastConsumed = _consumedChunks;
+    while (true) {
+      try {
+        await worker.timeout(const Duration(milliseconds: 250));
+        return;
+      } on TimeoutException {
+        if (_consumedChunks != lastConsumed) {
+          lastConsumed = _consumedChunks;
+          idle.reset();
+        } else if (idle.elapsed >= drainTimeout) {
+          rethrow;
+        }
+      }
     }
   }
 
@@ -322,6 +349,7 @@ final class QueuedPcmAudioPlayer implements PcmAudioPlayer {
         final stopwatch = Stopwatch()..start();
         await _sink.feed(chunk);
         stopwatch.stop();
+        _consumedChunks++;
         if (stopwatch.elapsedMicroseconds > _maximumFeedLatencyMicros) {
           _maximumFeedLatencyMicros = stopwatch.elapsedMicroseconds;
         }

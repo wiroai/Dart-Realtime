@@ -9,6 +9,7 @@ import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/model_parameter_values.dart';
 import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
+import 'package:wiro_realtime/core/models/wiro_run_result.dart';
 import 'package:wiro_realtime/core/network/realtime_task_launcher.dart';
 import 'package:wiro_realtime/core/network/wiro_api_client.dart';
 import 'package:wiro_realtime/core/network/wiro_failure.dart';
@@ -33,6 +34,8 @@ final class TextToSpeechSessionService implements SpeechSessionController {
     required this.sessionGuard,
     ModelDefinition model = WiroModelCatalog.mossTtsRealtime,
     this.terminalTimeout = const Duration(seconds: 3),
+    this.connectRetryDelay = const Duration(seconds: 4),
+    this.maxConnectAttempts = 8,
   }) : _selectedModel = model,
        _parameters = ModelParameterValues(model.firstPassFields),
        _snapshot = SpeechSessionSnapshot(selectedModel: model) {
@@ -50,6 +53,17 @@ final class TextToSpeechSessionService implements SpeechSessionController {
   final RealtimeSessionFactory sessionFactory;
   final PcmAudioPlayer player;
   final Duration terminalTimeout;
+
+  /// A TTS model can spin up cold and take a minute to reach its stream;
+  /// while it does, the server may drop the subscriber socket. That leaves
+  /// a perfectly good task behind, so the session resubscribes to the task
+  /// it already has instead of failing — a new task would say the same
+  /// words for a second bill. A ready-wait that expires is different: the
+  /// socket replays nothing to a subscriber that arrives after an event
+  /// fired, so a `task_stream_ready` the wait missed is gone for good and
+  /// resubscribing would only stack more full-length waits on a dead task.
+  final Duration connectRetryDelay;
+  final int maxConnectAttempts;
 
   @override
   final RealtimeSessionGuard sessionGuard;
@@ -81,6 +95,12 @@ final class TextToSpeechSessionService implements SpeechSessionController {
   Future<void>? _startOperation;
   Future<void>? _stopOperation;
   bool _naturalCompletionRunning = false;
+
+  /// True while a connect attempt owns the session's fate. The stream
+  /// closing during that window surfaces through the awaited connect,
+  /// so the done and error handlers must not race it to `_fail` — that
+  /// would spend the whole retry budget on the first drop.
+  bool _connectingSession = false;
 
   @override
   Stream<SpeechSessionSnapshot> get snapshots => _snapshots.stream;
@@ -131,7 +151,37 @@ final class TextToSpeechSessionService implements SpeechSessionController {
       );
       return Future<void>.value();
     }
-    final lease = sessionGuard.acquire(RealtimeSessionOwner.speech);
+    final operation = _acquireAndStart(prompt);
+    _startOperation = operation;
+    return operation.whenComplete(() {
+      if (identical(_startOperation, operation)) {
+        _startOperation = null;
+      }
+    });
+  }
+
+  /// Waits out another feature's teardown before starting.
+  ///
+  /// Switching tabs ends the previous session, but its lease is released
+  /// a beat after the tap that lands here. Waiting turns that race into a
+  /// slightly longer connect instead of a busy error. The loading state is
+  /// published before the wait so a second tap cannot start twice.
+  Future<void> _acquireAndStart(String prompt) async {
+    final operationId = _guard.begin();
+    _publish(
+      _snapshot.copyWith(
+        status: ViewStatus.loading,
+        sessionState: RealtimeSessionState.preparingAudio,
+        errorMessage: null,
+      ),
+    );
+    final lease = await sessionGuard.acquireWhenFree(
+      RealtimeSessionOwner.speech,
+    );
+    if (!_guard.isCurrent(operationId)) {
+      sessionGuard.release(lease);
+      return;
+    }
     if (lease == null) {
       _publish(
         _snapshot.copyWith(
@@ -140,16 +190,10 @@ final class TextToSpeechSessionService implements SpeechSessionController {
           errorMessage: const WiroSessionBusyFailure().message,
         ),
       );
-      return Future<void>.value();
+      return;
     }
     _sessionLease = lease;
-    final operation = _start(prompt);
-    _startOperation = operation;
-    return operation.whenComplete(() {
-      if (identical(_startOperation, operation)) {
-        _startOperation = null;
-      }
-    });
+    await _start(prompt);
   }
 
   Future<void> _start(String prompt) async {
@@ -204,37 +248,9 @@ final class TextToSpeechSessionService implements SpeechSessionController {
         return;
       }
 
-      final session = sessionFactory(
-        taskId: runResult.taskId,
-        taskToken: runResult.taskToken,
-      );
-      _session = session;
-      _terminalCompleter = Completer<void>();
-      _playbackCompletion = null;
-      _naturalCompletion = null;
-      _naturalCompletionRunning = false;
-      _eventSubscription = session.events.listen(
-        (event) => _handleEvent(event, operationId),
-        onError: (Object error) => _handleEventError(error, operationId),
-        onDone: () => _handleEventStreamDone(operationId),
-      );
-      _publish(
-        _snapshot.copyWith(
-          sessionState: RealtimeSessionState.connectingSocket,
-        ),
-      );
-      final connection = session.connect();
-      await Future<void>.delayed(Duration.zero);
-      if (_guard.isCurrent(operationId)) {
-        _publish(
-          _snapshot.copyWith(
-            sessionState: RealtimeSessionState.waitingForStream,
-          ),
-        );
-      }
-      await connection;
-      if (!_guard.isCurrent(operationId)) {
-        await session.close();
+      final session = await _connectToTask(runResult, operationId);
+      if (session == null || !_guard.isCurrent(operationId)) {
+        await session?.close();
         return;
       }
 
@@ -259,6 +275,88 @@ final class TextToSpeechSessionService implements SpeechSessionController {
         await _fail(operationId, error);
       }
     }
+  }
+
+  /// Connects and subscribes to the launched task, retrying recoverable
+  /// socket drops and ready-waits a cold model outlives.
+  ///
+  /// Returns null when the caller moved on mid-attempt; throws once the
+  /// retry budget is spent or the failure is one a retry cannot help.
+  Future<RealtimeSessionClient?> _connectToTask(
+    WiroRunResult runResult,
+    int operationId,
+  ) async {
+    var attempt = 0;
+    while (true) {
+      attempt++;
+      final session = sessionFactory(
+        taskId: runResult.taskId,
+        taskToken: runResult.taskToken,
+      );
+      _session = session;
+      _terminalCompleter = Completer<void>();
+      _playbackCompletion = null;
+      _naturalCompletion = null;
+      _naturalCompletionRunning = false;
+      _connectingSession = true;
+      _eventSubscription = session.events.listen(
+        (event) => _handleEvent(event, operationId),
+        onError: (Object error) => _handleEventError(error, operationId),
+        onDone: () => _handleEventStreamDone(operationId),
+      );
+      _publish(
+        _snapshot.copyWith(
+          sessionState: RealtimeSessionState.connectingSocket,
+        ),
+      );
+      // The failure handler attaches before any await: a connect that
+      // fails within the yield below would otherwise be an unhandled
+      // async error instead of a retry.
+      final connection = session.connect().then<WiroFailure?>(
+        (_) => null,
+        onError: (Object error) {
+          if (error is WiroFailure) {
+            return error;
+          }
+          // ignore: only_throw_errors -- rethrows the original object.
+          throw error;
+        },
+      );
+      await Future<void>.delayed(Duration.zero);
+      if (_guard.isCurrent(operationId)) {
+        _publish(
+          _snapshot.copyWith(
+            sessionState: RealtimeSessionState.waitingForStream,
+          ),
+        );
+      }
+      final error = await connection;
+      _connectingSession = false;
+      if (error == null) {
+        return session;
+      }
+      await _eventSubscription?.cancel();
+      _eventSubscription = null;
+      await session.close();
+      _session = null;
+      final canRetry =
+          _isRecoverableConnectFailure(error) &&
+          attempt < maxConnectAttempts &&
+          _guard.isCurrent(operationId);
+      if (!canRetry) {
+        throw error;
+      }
+      _appendProtocolEvent('socket_reconnect:$attempt');
+      await Future<void>.delayed(connectRetryDelay);
+      if (!_guard.isCurrent(operationId)) {
+        return null;
+      }
+    }
+  }
+
+  bool _isRecoverableConnectFailure(WiroFailure failure) {
+    return failure is WiroSocketFailure ||
+        failure is WiroSocketConnectTimeoutFailure;
   }
 
   @override
@@ -297,6 +395,10 @@ final class TextToSpeechSessionService implements SpeechSessionController {
     await player.stop();
     await _naturalCompletion;
     await audioSession.deactivate();
+    // The hardware is free from here on; only the protocol wind-down
+    // remains. Holding the lease through the terminal wait would block
+    // whichever feature the user already moved on to for those seconds.
+    _releaseLease();
 
     var shutdownTimedOut = false;
     final session = _session;
@@ -317,21 +419,20 @@ final class TextToSpeechSessionService implements SpeechSessionController {
     await _eventSubscription?.cancel();
     _clearSessionReferences();
     _taskLauncher.release();
-    _releaseLease();
 
     if (!_guard.isCurrent(operationId)) {
       return;
     }
+    // A slow shutdown confirmation is not news the user can act on: the
+    // playback is over and the server winds down an abandoned task on
+    // its own. It stays in the protocol log as diagnostics and out of
+    // the user's way.
     _publish(
       _snapshot.copyWith(
-        status: shutdownTimedOut ? ViewStatus.error : ViewStatus.success,
-        sessionState: shutdownTimedOut
-            ? RealtimeSessionState.failure
-            : RealtimeSessionState.completed,
+        status: ViewStatus.success,
+        sessionState: RealtimeSessionState.completed,
         isPlaying: false,
-        errorMessage: shutdownTimedOut
-            ? const WiroShutdownTimeoutFailure().message
-            : null,
+        errorMessage: null,
         protocolEvents: _protocolLog.add(
           shutdownTimedOut ? 'shutdown_timeout' : 'session_stopped',
         ),
@@ -460,12 +561,18 @@ final class TextToSpeechSessionService implements SpeechSessionController {
   }
 
   void _handleEventError(Object error, int operationId) {
+    if (_connectingSession) {
+      return;
+    }
     if (_guard.isCurrent(operationId)) {
       unawaited(_fail(operationId, error));
     }
   }
 
   void _handleEventStreamDone(int operationId) {
+    if (_connectingSession) {
+      return;
+    }
     final terminalReceived = _terminalCompleter?.isCompleted ?? false;
     if (_guard.isCurrent(operationId) && !terminalReceived) {
       unawaited(_fail(operationId, const WiroSocketFailure()));

@@ -8,10 +8,8 @@ import 'package:wiro_realtime/app/theme/app_theme.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_session_snapshot.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_copy.dart';
-import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_fields.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/speech_to_speech_view.dart';
-import 'package:wiro_realtime/features/speech_to_speech/view/widgets/advanced_settings_sheet.dart';
-import 'package:wiro_realtime/features/speech_to_speech/view/widgets/conversation_app_bar_bottom.dart';
+import 'package:wiro_realtime/features/speech_to_speech/view/widgets/conversation_app_bar_title.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/voice_orb.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/voice_orb_painter.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view_model/speech_to_speech_view_model.dart';
@@ -49,7 +47,7 @@ void main() {
         home: Scaffold(
           body: Column(
             children: [
-              ConversationAppBarBottom(viewModel: viewModel),
+              ConversationAppBarTitle(viewModel: viewModel),
               // No scroll view, because the screen has none: anything that
               // does not fit here does not fit on a phone either.
               Expanded(
@@ -118,52 +116,6 @@ void main() {
 
     expect(harness.viewModel.parameters.require('voice').value, 'cedar');
     expect(find.text('Cedar'), findsOneWidget);
-  });
-
-  testWidgets('the settings sheet reaches every parameter but the voice', (
-    tester,
-  ) async {
-    final harness = build();
-    final model = harness.controller.model;
-
-    // The two halves have to add up: a field dropped from both lists would
-    // be unreachable, and one in both would be editable in two places.
-    expect(
-      [
-        ConversationFields.voice(model)!.id,
-        ...ConversationFields.advanced(model).map((field) => field.id),
-      ]..sort(),
-      model.firstPassFields.map((field) => field.id).toList()..sort(),
-    );
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: Scaffold(
-          body: Builder(
-            builder: (context) => TextButton(
-              onPressed: () => showAdvancedSettingsSheet(
-                context,
-                fields: ConversationFields.advanced(model),
-                values: harness.viewModel.parameters,
-              ),
-              child: const Text('open'),
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.tap(find.text('open'));
-    await tester.pumpAndSettle();
-
-    for (final field in ConversationFields.advanced(model)) {
-      expect(
-        find.byKey(ValueKey<String>('field-${field.id}')),
-        findsOneWidget,
-        reason: field.id,
-      );
-    }
-    expect(find.byKey(const ValueKey<String>('field-voice')), findsNothing);
   });
 
   testWidgets('connecting stays on the setup screen and names its step', (
@@ -755,8 +707,7 @@ void main() {
         ),
         home: Scaffold(
           appBar: AppBar(
-            title: const Text(ConversationCopy.destinationTitle),
-            bottom: ConversationAppBarBottom(viewModel: harness.viewModel),
+            title: ConversationAppBarTitle(viewModel: harness.viewModel),
           ),
           body: Padding(
             padding: ProjectPadding.stage,

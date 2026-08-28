@@ -67,7 +67,7 @@ class ConversationOrb extends StatelessWidget {
     return VoiceOrb(
       key: const ValueKey<String>('conversation-orb'),
       mode: _modeFor(state, stage, activity.phase),
-      size: VoiceOrb.sizeFor(context),
+      size: VoiceOrb.defaultSize,
       activity: activity,
       progress: _progressFor(state, stage),
       semanticLabel: _semanticLabelFor(state, stage, activity),

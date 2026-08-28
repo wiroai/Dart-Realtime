@@ -45,7 +45,6 @@ void main() {
     final state = harness.viewModel.state;
     expect(state.selectedModel, WiroModelCatalog.voxcpm2);
     expect(state.sessionState, RealtimeSessionState.streaming);
-    expect(state.elapsed, const Duration(seconds: 4));
     expect(state.isPlaying, isTrue);
     expect(state.errorMessage, 'error');
     expect(state.protocolEvents, ['event']);

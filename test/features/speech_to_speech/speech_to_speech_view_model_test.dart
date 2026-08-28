@@ -215,9 +215,6 @@ final class FakeConversationSessionController
   Future<void> changeVoice(String voice) async {}
 
   @override
-  Future<void> applyParameterChanges() async {}
-
-  @override
   Future<void> suspend() async {}
 
   @override

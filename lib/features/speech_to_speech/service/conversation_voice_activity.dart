@@ -28,7 +28,15 @@ final class ConversationVoiceActivity extends ChangeNotifier {
 
   /// While the assistant is audible the bar is raised, so speaker bleed
   /// that echo cancellation misses does not read as the user talking.
-  static const double _interruptThreshold = 0.45;
+  static const double _interruptThreshold = 0.4;
+
+  /// Once the streak has started, chunks at or above this level keep the
+  /// evidence alive without adding to it. Real speech dips between
+  /// syllables far below the entry bar yet well above room quiet, and
+  /// draining the streak on every dip left sentences oscillating short of
+  /// the confirm target until the hold resumed mid-speech. Only genuine
+  /// quiet — the silence after a noise burst — erodes the evidence now.
+  static const double _interruptSustainThreshold = 0.25;
 
   /// How long the user keeps the floor after their last loud chunk, so a
   /// breath between words does not flicker the phase back to quiet.
@@ -37,19 +45,19 @@ final class ConversationVoiceActivity extends ChangeNotifier {
   /// Accumulated loud chunks it takes to suspect an interruption: three
   /// chunks is sixty milliseconds, fast enough that the assistant feels
   /// silenced the instant the user starts talking. The counter leaks
-  /// instead of resetting — a loud chunk adds one, a quiet chunk
+  /// instead of resetting — a loud chunk adds one, a truly quiet chunk
   /// subtracts one — because genuine speech dips between syllables.
   /// Keeping this trigger-happy is safe because suspicion only pauses
   /// playback: nothing is discarded until [_confirmStreakTarget] proves
-  /// the sound is speech, so a keyboard burst costs a beat of silence
+  /// the sound is speech, so a noise burst costs a beat of silence
   /// rather than the rest of the answer.
   static const int _suspectStreakTarget = 3;
 
   /// Accumulated loud chunks it takes to call the suspicion speech and
-  /// cut the assistant's turn for good. A keyboard click is a couple of
-  /// loud chunks drowning in their own gaps, so the leaking counter
-  /// cannot climb this far on typing; a spoken sentence keeps the
-  /// counter fed through its syllable dips and crosses within roughly a
+  /// cut the assistant's turn for good. A noise burst is a couple of
+  /// loud chunks drowning in their own true silence, so the counter
+  /// cannot climb this far on noise; a spoken sentence rides its
+  /// syllable dips on the sustain level and crosses within roughly a
   /// quarter of a second.
   static const int _confirmStreakTarget = 8;
 
@@ -77,7 +85,7 @@ final class ConversationVoiceActivity extends ChangeNotifier {
   bool get aiAudioPending => DateTime.now().isBefore(_aiPlayheadUntil);
 
   /// True while the user has been loud over pending assistant audio just
-  /// long enough to be either speech or a slammed key: worth silencing
+  /// long enough to be either speech or a burst of noise: worth silencing
   /// the assistant, not yet worth discarding its audio.
   bool get userMaybeInterrupting {
     return _interruptStreak >= _suspectStreakTarget &&
@@ -92,8 +100,8 @@ final class ConversationVoiceActivity extends ChangeNotifier {
   }
 
   /// True while recent chunks still argue for an interruption; false once
-  /// the streak has fully drained, which is how a keyboard click that
-  /// paused playback is recognised as noise and taken back.
+  /// the streak has fully drained, which is how a noise burst that
+  /// paused playback is recognised for what it is and taken back.
   bool get hasInterruptEvidence => _interruptStreak > 0;
 
   /// Level of the assistant audio playing right now, 0..1. Poll per frame.
@@ -127,7 +135,7 @@ final class ConversationVoiceActivity extends ChangeNotifier {
       if (_interruptStreak < _confirmStreakTarget) {
         _interruptStreak++;
       }
-    } else if (_interruptStreak > 0) {
+    } else if (level < _interruptSustainThreshold && _interruptStreak > 0) {
       _interruptStreak--;
     }
     final threshold = aiPending ? _interruptThreshold : _speechThreshold;

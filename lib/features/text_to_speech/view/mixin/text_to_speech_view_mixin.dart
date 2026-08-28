@@ -3,41 +3,41 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/core/audio/audio_stream_pcm_playback_sink.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_player.dart';
-import 'package:wiro_realtime/core/auth/wiro_auth_headers.dart';
-import 'package:wiro_realtime/core/network/dio_wiro_http_client.dart';
-import 'package:wiro_realtime/core/network/wiro_api_client.dart';
-import 'package:wiro_realtime/core/network/wiro_http_client.dart';
-import 'package:wiro_realtime/core/realtime/realtime_session.dart';
+import 'package:wiro_realtime/core/realtime/realtime_session_dependencies.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/core/realtime/web_socket_realtime_socket_client.dart';
 import 'package:wiro_realtime/features/text_to_speech/service/text_to_speech_session_service.dart';
 import 'package:wiro_realtime/features/text_to_speech/view/text_to_speech_view.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/text_to_speech_view_model.dart';
 
 mixin TextToSpeechViewMixin on State<TextToSpeechView> {
   late final TextToSpeechViewModel textToSpeechViewModel;
-  late final WiroHttpClient _httpClient;
+  late final RealtimeSessionDependencies _dependencies;
   late final AppLifecycleListener _appLifecycleListener;
 
   @override
   void initState() {
     super.initState();
-    _httpClient = DioWiroHttpClient();
+    _dependencies = RealtimeSessionDependencies(
+      credentials: widget.credentials,
+      // The MOSS TTS worker cold-starts in about a minute, and the
+      // socket replays nothing to a subscriber that arrives after an
+      // event fired. The first subscription therefore has to outlive
+      // the cold start: a short ready-wait that closes and resubscribes
+      // can miss `task_stream_ready` for good.
+      readyTimeout: const Duration(seconds: 120),
+    );
     textToSpeechViewModel = TextToSpeechViewModel(
       sessionService: TextToSpeechSessionService(
         audioSession: widget.audioSession,
-        apiClient: DefaultWiroApiClient(
-          _httpClient,
-          WiroAuthHeaders(credentials: widget.credentials),
-        ),
-        sessionFactory: ({required taskId, required taskToken}) =>
-            RealtimeSession(
-              socketClient: WebSocketRealtimeSocketClient(),
-              taskId: taskId,
-              taskToken: taskToken,
-            ),
+        apiClient: _dependencies.apiClient,
+        sessionFactory: _dependencies.createSession,
+        // The model sends the whole synthesis faster than realtime and the
+        // point of this screen is hearing all of it, so the queue holds
+        // roughly ten minutes of speech (~240 ms per chunk) instead of the
+        // conversation-sized default, where dropping stale audio is right.
         player: QueuedPcmAudioPlayer(
           AudioStreamPcmPlaybackSink(),
+          queueCapacityInChunks: 2500,
         ),
         sessionGuard: widget.sessionGuard,
       ),
@@ -64,7 +64,7 @@ mixin TextToSpeechViewMixin on State<TextToSpeechView> {
   void dispose() {
     _appLifecycleListener.dispose();
     textToSpeechViewModel.dispose();
-    _httpClient.close();
+    _dependencies.close();
     super.dispose();
   }
 

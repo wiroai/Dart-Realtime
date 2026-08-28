@@ -2,9 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
-import 'package:wiro_realtime/app/extensions/media_query_extension.dart';
 import 'package:wiro_realtime/app/layout/project_duration.dart';
 import 'package:wiro_realtime/app/theme/app_colors.dart';
+import 'package:wiro_realtime/app/widgets/session_ring_button.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/conversation_voice_activity.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/widgets/voice_orb_painter.dart';
 
@@ -70,12 +70,10 @@ class VoiceOrb extends StatefulWidget {
   /// One size for every stage, so starting or ending a conversation never
   /// resizes the shape the eye is fixed on.
   ///
-  /// Measured against the phone rather than the box the orb is handed,
-  /// because the clamp is about how big a circle a hand wants to tap, and
-  /// that does not change when a line of text appears under it.
-  static double sizeFor(BuildContext context) {
-    return (context.height * 0.2).clamp(120.0, 190.0);
-  }
+  /// It is the other tabs' button box: the orb's core lands within a
+  /// couple of pixels of their outer ring, so flipping between the three
+  /// destinations shows one control in one place at one size.
+  static const double defaultSize = SessionRingButton.footprint;
 
   @override
   State<VoiceOrb> createState() => _VoiceOrbState();

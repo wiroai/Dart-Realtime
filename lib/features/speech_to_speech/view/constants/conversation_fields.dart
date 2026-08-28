@@ -1,13 +1,11 @@
 import 'package:wiro_realtime/core/models/model_definition.dart';
 
-/// Splits the model's first-pass fields into the one the screen shows and
-/// the rest.
+/// Finds the one first-pass field the screen shows.
 ///
 /// The voice is the only parameter a person choosing a conversation
-/// partner cares about; the other eight are engineering knobs and live
-/// behind the settings control. Both halves are derived from the same
-/// constant here so the two callers cannot drift apart and show a field
-/// twice or lose one entirely.
+/// partner cares about; the rest of the model's knobs are an
+/// application's decision and are fixed in `ConversationConfig` rather
+/// than surfaced to the person talking.
 abstract final class ConversationFields {
   static const String voiceId = 'voice';
 
@@ -18,9 +16,5 @@ abstract final class ConversationFields {
       }
     }
     return null;
-  }
-
-  static List<ModelFieldDefinition> advanced(ModelDefinition model) {
-    return model.firstPassFields.where((field) => field.id != voiceId).toList();
   }
 }

@@ -36,7 +36,7 @@ void main() {
     expect(service.snapshot.microphoneActive, isTrue);
   });
 
-  test('replaces transcript with each authoritative output', () async {
+  test('a growing utterance refines the transcript in place', () async {
     final dependencies = TranscriptionTestDependencies();
     final service = dependencies.createService();
     addTearDown(service.dispose);
@@ -53,6 +53,55 @@ void main() {
       ),
       hasLength(2),
     );
+  });
+
+  test('a new utterance joins the transcript instead of erasing it', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world.'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:How are'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:How are you?'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Good.'));
+
+    expect(
+      service.snapshot.transcript,
+      'Hello world. How are you? Good.',
+    );
+  });
+
+  test('a shorter re-emit of the live utterance changes nothing', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello'));
+
+    expect(service.snapshot.transcript, 'Hello world');
+  });
+
+  test('a new take starts from a blank transcript', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+    dependencies.session.emit(
+      const RealtimeOutputEvent('TRANSCRIPT_USER:Old take'),
+    );
+    await service.stop();
+
+    await service.start();
+    dependencies.session.emit(
+      const RealtimeOutputEvent('TRANSCRIPT_USER:New take'),
+    );
+
+    expect(service.snapshot.transcript, 'New take');
   });
 
   test('stop releases microphone and sends one session end', () async {
@@ -73,7 +122,7 @@ void main() {
     expect(service.snapshot.microphoneActive, isFalse);
   });
 
-  test('reports a failure when terminal shutdown times out', () async {
+  test('a slow shutdown confirmation completes without an error', () async {
     final dependencies = TranscriptionTestDependencies(
       completeSessionEnd: false,
     );
@@ -83,8 +132,9 @@ void main() {
 
     await service.stop();
 
-    expect(service.snapshot.status, ViewStatus.error);
-    expect(service.snapshot.sessionState, RealtimeSessionState.failure);
+    expect(service.snapshot.status, ViewStatus.success);
+    expect(service.snapshot.sessionState, RealtimeSessionState.completed);
+    expect(service.snapshot.errorMessage, isNull);
     expect(service.snapshot.protocolEvents, contains('shutdown_timeout'));
   });
 
@@ -264,6 +314,26 @@ void main() {
       dependencies.sessionGuard.acquire(RealtimeSessionOwner.conversation),
       isNotNull,
     );
+  });
+
+  test('a start during another feature teardown waits it out', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    // The conversation tab was just left: its session is winding down and
+    // still holds the lease for a beat.
+    final departing = dependencies.sessionGuard.acquire(
+      RealtimeSessionOwner.conversation,
+    );
+
+    final starting = service.start();
+    await pumpEventQueue();
+    expect(service.snapshot.status, ViewStatus.loading);
+    dependencies.sessionGuard.release(departing);
+    await starting;
+
+    expect(service.snapshot.sessionState, RealtimeSessionState.streaming);
+    expect(service.snapshot.errorMessage, isNull);
   });
 
   test('keeps the local protocol history bounded', () async {

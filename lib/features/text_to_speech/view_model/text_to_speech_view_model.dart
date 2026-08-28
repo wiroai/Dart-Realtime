@@ -61,7 +61,6 @@ final class TextToSpeechViewModel extends BaseViewModel<TextToSpeechState> {
       state.copyWith(
         selectedModel: snapshot.selectedModel,
         sessionState: snapshot.sessionState,
-        elapsed: snapshot.elapsed,
         isPlaying: snapshot.isPlaying,
         errorMessage: snapshot.errorMessage,
         protocolEvents: snapshot.protocolEvents,

@@ -34,6 +34,30 @@ void main() {
     expect(player.isPlaying, isFalse);
   });
 
+  test('completion waits out a long tail while the sink keeps consuming',
+      () async {
+    final sink = FakePcmPlaybackSink(
+      feedDelay: const Duration(milliseconds: 30),
+    );
+    final player = QueuedPcmAudioPlayer(
+      sink,
+      drainTimeout: const Duration(milliseconds: 60),
+    );
+    addTearDown(player.dispose);
+
+    await player.start();
+    // Ten slow chunks take five times the drain timeout to play out; the
+    // bound guards progress, not total duration, so none may be dropped.
+    for (var i = 0; i < 10; i++) {
+      await player.enqueue(Uint8List.fromList([i]));
+    }
+    await player.complete();
+
+    expect(sink.fedChunks, hasLength(10));
+    expect(sink.endOfStreamCalls, 1);
+    expect(player.isPlaying, isFalse);
+  });
+
   test('a sink that stopped draining still lets completion finish', () async {
     final sink = FakePcmPlaybackSink(stalled: true);
     final player = QueuedPcmAudioPlayer(
@@ -86,7 +110,9 @@ void main() {
     expect((await failure).toString(), isNot(contains('platform')));
   });
 
-  test('repeated lifecycle calls initialize and dispose once', () async {
+  // The sink may discard its native player on stop, so every start must
+  // offer it the chance to rebuild; the sink dedupes while one exists.
+  test('every start reinitializes the sink and dispose runs once', () async {
     final sink = FakePcmPlaybackSink();
     final player = QueuedPcmAudioPlayer(sink);
 
@@ -97,20 +123,27 @@ void main() {
     await player.dispose();
     await player.dispose();
 
-    expect(sink.initializeCalls, 1);
+    expect(sink.initializeCalls, 2);
     expect(sink.playCalls, 2);
     expect(sink.disposeCalls, 1);
   });
 }
 
 final class FakePcmPlaybackSink implements PcmPlaybackSink {
-  FakePcmPlaybackSink({this.failFeed = false, this.stalled = false});
+  FakePcmPlaybackSink({
+    this.failFeed = false,
+    this.stalled = false,
+    this.feedDelay = Duration.zero,
+  });
 
   final bool failFeed;
 
   /// Reports a native buffer that never empties, which is what a torn-down
   /// engine looks like from here.
   final bool stalled;
+
+  /// How long each feed takes, standing in for a sink playing in realtime.
+  final Duration feedDelay;
   final List<List<int>> fedChunks = [];
   final List<double> volumes = [];
 
@@ -138,6 +171,9 @@ final class FakePcmPlaybackSink implements PcmPlaybackSink {
   Future<void> feed(Uint8List chunk) async {
     if (failFeed) {
       throw StateError('private platform failure');
+    }
+    if (feedDelay > Duration.zero) {
+      await Future<void>.delayed(feedDelay);
     }
     fedChunks.add(List<int>.from(chunk));
   }

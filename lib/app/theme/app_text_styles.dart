@@ -67,6 +67,10 @@ abstract final class AppTextStyles {
     height: 1.1,
   );
 
+  /// Body text that owns the screen — a transcript, a prompt being
+  /// spoken — set large enough to read at arm's length.
+  static const TextStyle reading = TextStyle(fontSize: 20, height: 1.55);
+
   static const TextStyle metricLarge = TextStyle(
     fontSize: 30,
     fontWeight: FontWeight.w600,

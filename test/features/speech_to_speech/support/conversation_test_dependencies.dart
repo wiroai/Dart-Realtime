@@ -47,10 +47,12 @@ final class ConversationTestDependencies {
     int maxAutoRestarts = 2,
     Duration maxSessionDuration = ConversationConfig.maxSessionDuration,
     Duration suspendGracePeriod = ConversationConfig.suspendGracePeriod,
+    Map<String, String> parameterOverrides = ConversationConfig.parameters,
   }) {
     return SpeechToSpeechSessionService(
       maxSessionDuration: maxSessionDuration,
       suspendGracePeriod: suspendGracePeriod,
+      parameterOverrides: parameterOverrides,
       audioSession: audioSession,
       apiClient: apiClient,
       sessionFactory: ({

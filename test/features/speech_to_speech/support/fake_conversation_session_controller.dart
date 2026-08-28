@@ -17,7 +17,6 @@ final class FakeConversationSessionController
   int stopCalls = 0;
   int disposeCalls = 0;
   int interruptCalls = 0;
-  int applyParameterChangesCalls = 0;
   int openSystemSettingsCalls = 0;
   int suspendCalls = 0;
   int resumeCalls = 0;
@@ -59,11 +58,6 @@ final class FakeConversationSessionController
   @override
   Future<void> changeVoice(String voice) async {
     changeVoiceRequests.add(voice);
-  }
-
-  @override
-  Future<void> applyParameterChanges() async {
-    applyParameterChangesCalls++;
   }
 
   @override

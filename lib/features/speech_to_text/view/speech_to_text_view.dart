@@ -1,16 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
+import 'package:wiro_realtime/app/layout/project_spacing.dart';
 import 'package:wiro_realtime/app/state/value_selector_builder.dart';
-import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
-import 'package:wiro_realtime/app/widgets/protocol_event_panel.dart';
-import 'package:wiro_realtime/app/widgets/realtime_sliver_app_bar.dart';
-import 'package:wiro_realtime/app/widgets/session_controls.dart';
+import 'package:wiro_realtime/app/widgets/session_settings_menu.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';
+import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
+import 'package:wiro_realtime/features/speech_to_text/view/constants/transcription_copy.dart';
 import 'package:wiro_realtime/features/speech_to_text/view/mixin/speech_to_text_view_mixin.dart';
+import 'package:wiro_realtime/features/speech_to_text/view/widgets/transcript_panel.dart';
+import 'package:wiro_realtime/features/speech_to_text/view/widgets/transcription_control_strip.dart';
+import 'package:wiro_realtime/features/speech_to_text/view/widgets/transcription_mic_button.dart';
+import 'package:wiro_realtime/features/speech_to_text/view/widgets/transcription_timer.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/speech_to_text_view_model.dart';
 import 'package:wiro_realtime/features/speech_to_text/view_model/state/speech_to_text_state.dart';
 
@@ -40,25 +43,35 @@ class SpeechToTextView extends StatefulWidget {
 
 class _SpeechToTextViewState extends State<SpeechToTextView>
     with SpeechToTextViewMixin {
+  static const double _contentMaxWidth = 520;
+
+  // The transcript owns the screen and scrolls inside its own area, so
+  // the page itself never scrolls: the record button stays under the
+  // thumb no matter how long the text grows.
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        const RealtimeSliverAppBar(title: 'Transcription'),
-        SliverPadding(
-          padding: ProjectPadding.page,
-          sliver: SliverToBoxAdapter(
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(TranscriptionCopy.destinationTitle),
+        actions: [_AccuracyAction(viewModel: speechToTextViewModel)],
+      ),
+      body: Padding(
+        padding: ProjectPadding.stage,
+        child: Align(
+          alignment: Alignment.topCenter,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
             child: SpeechToTextBody(viewModel: speechToTextViewModel),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
 /// Each section subscribes to the one value it draws, so the transcript
-/// streaming in does not redraw the form, and the elapsed clock ticking
-/// does not redraw the transcript.
+/// streaming in does not redraw the controls, and the elapsed clock
+/// ticking does not redraw the transcript.
 class SpeechToTextBody extends StatelessWidget {
   const SpeechToTextBody({required this.viewModel, super.key});
 
@@ -69,92 +82,70 @@ class SpeechToTextBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        FixedModelLabel(model: viewModel.model),
-        const SizedBox(height: 12),
-        ValueSelectorBuilder<SpeechToTextState, bool>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState.isActive,
-          builder: (context, active) => ModelParameterForm(
-            fields: viewModel.model.firstPassFields,
-            values: viewModel.parameters,
-            enabled: !active,
-          ),
-        ),
-        ValueSelectorBuilder<SpeechToTextState, RealtimeSessionState>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState,
-          builder: (context, sessionState) =>
-              SessionStatusLabel(sessionState: sessionState),
-        ),
-        ValueSelectorBuilder<SpeechToTextState, Duration>(
-          valueListenable: viewModel,
-          selector: (state) => state.elapsed,
-          builder: (context, elapsed) => ElapsedTimeLabel(elapsed: elapsed),
-        ),
-        ValueSelectorBuilder<SpeechToTextState, bool>(
-          valueListenable: viewModel,
-          selector: (state) => state.microphoneActive,
-          builder: (context, active) =>
-              MicrophoneActivityLabel(microphoneActive: active),
-        ),
-        const SizedBox(height: 8),
-        ValueSelectorBuilder<SpeechToTextState, RealtimeSessionState>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState,
-          builder: (context, sessionState) => StartStopControls(
-            sessionState: sessionState,
-            startLabel: 'Start',
-            stopLabel: 'Stop',
-            onStart: viewModel.start,
-            onStop: viewModel.stop,
-            sessionGuard: viewModel.sessionGuard,
-          ),
-        ),
-        ValueSelectorBuilder<SpeechToTextState, bool>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState.isIdleLike,
-          builder: (context, idle) => idle
-              ? Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton(
-                    key: const ValueKey<String>('clear-transcript'),
-                    onPressed: viewModel.clearTranscript,
-                    child: const Text('Clear transcript'),
-                  ),
-                )
-              : const SizedBox.shrink(),
-        ),
-        const SizedBox(height: 12),
-        ValueSelectorBuilder<SpeechToTextState, String>(
-          valueListenable: viewModel,
-          selector: (state) => state.transcript,
-          builder: (context, transcript) => Text(
-            transcript.isEmpty ? 'Waiting for transcript.' : transcript,
-            style: context.textTheme.headlineSmall,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ValueSelectorBuilder<SpeechToTextState, String?>(
-          valueListenable: viewModel,
-          selector: (state) => state.errorMessage,
-          builder: (context, message) =>
-              SanitizedErrorText(errorMessage: message),
-        ),
-        ValueSelectorBuilder<SpeechToTextState, _PanelSelection>(
-          valueListenable: viewModel,
-          selector: (state) => (
-            expanded: state.protocolExpanded,
-            events: state.protocolEvents,
-          ),
-          builder: (context, panel) => ProtocolEventPanel(
-            expanded: panel.expanded,
-            events: panel.events,
-            onToggle: viewModel.toggleProtocolPanel,
-          ),
-        ),
+        Expanded(child: TranscriptPanel(viewModel: viewModel)),
+        TranscriptionControlStrip(viewModel: viewModel),
+        const SizedBox(height: ProjectSpacing.sm),
+        TranscriptionTimer(viewModel: viewModel),
+        const SizedBox(height: ProjectSpacing.sm),
+        Center(child: TranscriptionMicButton(viewModel: viewModel)),
       ],
     );
   }
 }
 
-typedef _PanelSelection = ({bool expanded, List<String> events});
+/// The model's speed-versus-accuracy trade, parked in the bar.
+///
+/// The schema calls it `transcriptionDelay`; a person choosing between
+/// "fast" and "accurate" does not need the protocol word for it. The
+/// value is sent once when the task starts, so the menu is locked while
+/// a session runs.
+class _AccuracyAction extends StatelessWidget {
+  const _AccuracyAction({required this.viewModel});
+
+  final SpeechToTextViewModel viewModel;
+
+  static const String _fieldId = 'transcriptionDelay';
+
+  ModelFieldDefinition? get _delayField {
+    for (final field in viewModel.model.firstPassFields) {
+      if (field.id == _fieldId) {
+        return field;
+      }
+    }
+    return null;
+  }
+
+  String _label(String value) {
+    if (value.isEmpty) {
+      return value;
+    }
+    return value[0].toUpperCase() + value.substring(1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final field = _delayField;
+    if (field == null) {
+      return const SizedBox.shrink();
+    }
+    final valueListenable = viewModel.parameters.require(_fieldId);
+    return ValueSelectorBuilder<SpeechToTextState, bool>(
+      valueListenable: viewModel,
+      selector: (state) => state.sessionState.isIdleLike,
+      builder: (context, idle) => ValueListenableBuilder<String>(
+        valueListenable: valueListenable,
+        builder: (context, value, _) => SessionSettingsMenu(
+          menuKey: const ValueKey<String>('transcription-accuracy-menu'),
+          tooltip: TranscriptionCopy.accuracyTooltip,
+          enabled: idle,
+          selectedValue: value,
+          options: [
+            for (final option in field.options)
+              (value: option.value, label: _label(option.value)),
+          ],
+          onSelected: (next) => valueListenable.value = next,
+        ),
+      ),
+    );
+  }
+}

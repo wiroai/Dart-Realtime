@@ -258,7 +258,7 @@ void main() {
     ]);
   });
 
-  test('a keyboard burst pauses the answer and hands it back', () async {
+  test('a noise burst pauses the answer and hands it back', () async {
     final dependencies = ConversationTestDependencies();
     final service = dependencies.createService();
     addTearDown(service.dispose);
@@ -285,7 +285,7 @@ void main() {
       isNot(contains('assistant_interrupted')),
     );
 
-    // The burst dies the way a keystroke does, so the held remainder goes
+    // The burst dies the way noise does, so the held remainder goes
     // back to the speaker.
     for (var index = 0; index < 3; index++) {
       dependencies.recorder.emit(_micPcm(amplitude: 0));
@@ -776,6 +776,31 @@ void main() {
     expect(service.snapshot.sessionState, RealtimeSessionState.streaming);
   });
 
+  // A restart firing off screen would reopen the microphone and the
+  // billing for a conversation nobody is watching, and hold the session
+  // lease against whichever feature is on screen now.
+  test('leaving the screen cancels a scheduled restart', () async {
+    final dependencies = ConversationTestDependencies();
+    final service = dependencies.createService(
+      autoRestartDelay: const Duration(milliseconds: 50),
+    );
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session.emitError(const WiroSocketFailure());
+    await pumpEventQueue();
+    expect(
+      service.snapshot.protocolEvents,
+      contains('auto_restart_scheduled'),
+    );
+
+    await service.suspend();
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+
+    expect(dependencies.apiClient.runCalls, 1);
+    expect(service.snapshot.sessionState, RealtimeSessionState.failure);
+  });
+
   // An orb that keeps reconnecting on its own and keeps failing looks
   // exactly like an orb that is listening, so the retrying stops and the
   // tap comes back.
@@ -882,59 +907,33 @@ void main() {
     );
   });
 
-  test('an edited parameter rebuilds the live task with the new value',
+  test('configured parameters replace the catalog defaults in the request',
       () async {
     final dependencies = ConversationTestDependencies();
-    final service = dependencies.createService();
-    addTearDown(service.dispose);
-    await service.start();
-    dependencies.session.emit(
-      const RealtimeOutputEvent('TRANSCRIPT_USER:Hello'),
+    final service = dependencies.createService(
+      parameterOverrides: const {
+        'transcription_model': 'whisper-1',
+        'turn_detection_threshold': '0.6',
+        // The persona and the voice have dedicated config fields, so a
+        // stray duplicate here must lose to them.
+        'voice': 'cedar',
+      },
     );
+    addTearDown(service.dispose);
 
-    service.parameters.require('turn_detection_threshold').value = '0.4';
-    await service.applyParameterChanges();
+    await service.start();
 
-    expect(dependencies.apiClient.runCalls, 2);
     expect(
       dependencies.apiClient.lastParameters,
-      containsPair('turn_detection_threshold', 0.4),
+      containsPair('transcription_model', 'whisper-1'),
     );
-    expect(service.snapshot.sessionState, RealtimeSessionState.streaming);
-    expect(service.snapshot.userTranscript, 'Hello');
-    expect(
-      service.snapshot.protocolEvents,
-      contains('settings_change_completed'),
-    );
-  });
-
-  test('an untouched settings form leaves the session alone', () async {
-    final dependencies = ConversationTestDependencies();
-    final service = dependencies.createService();
-    addTearDown(service.dispose);
-    await service.start();
-
-    await service.applyParameterChanges();
-
-    expect(dependencies.apiClient.runCalls, 1);
-    expect(dependencies.session.closeCalls, 0);
-    expect(service.snapshot.isReconfiguring, isFalse);
-  });
-
-  test('parameters edited before the session starts need no rebuild',
-      () async {
-    final dependencies = ConversationTestDependencies();
-    final service = dependencies.createService();
-    addTearDown(service.dispose);
-
-    service.parameters.require('turn_detection_silence_ms').value = '400';
-    await service.applyParameterChanges();
-    await service.start();
-
-    expect(dependencies.apiClient.runCalls, 1);
     expect(
       dependencies.apiClient.lastParameters,
-      containsPair('turn_detection_silence_ms', 400),
+      containsPair('turn_detection_threshold', 0.6),
+    );
+    expect(
+      dependencies.apiClient.lastParameters,
+      containsPair('voice', ConversationConfig.voice),
     );
   });
 

@@ -20,7 +20,7 @@ import 'package:wiro_realtime/core/audio/pcm_level_meter.dart';
 final class PcmNoiseGate {
   PcmNoiseGate({
     this.minOpenLevel = 0.28,
-    this.assistantOpenLevel = 0.45,
+    this.assistantOpenLevel = 0.4,
     this.floorMultiplier = 1.6,
     this.floorCap = 0.5,
     this.hangover = const Duration(milliseconds: 600),

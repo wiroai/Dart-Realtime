@@ -38,14 +38,6 @@ abstract interface class ConversationSessionController {
 
   Future<void> changeVoice(String voice);
 
-  /// Rebuilds the live task so edits made to [parameters] take effect.
-  ///
-  /// Parameters are only read while a task is being created, so a form edited
-  /// mid-conversation would otherwise be silently ignored. A session that is
-  /// not running, and a form that matches what the running task was created
-  /// with, are both no-ops.
-  Future<void> applyParameterChanges();
-
   /// Silences the microphone and lets go of the audio hardware because the
   /// speaker left the screen, while holding their task open for a short
   /// while so [resume] can continue the same conversation.

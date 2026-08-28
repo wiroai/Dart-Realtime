@@ -41,7 +41,7 @@ final class PlaybackEnqueueResult {
 /// whatever the native engine had scheduled — so every enqueued chunk is
 /// retained here alongside the play window it was scheduled into. A suspected
 /// interruption ([holdTurn]) silences the speaker instantly while keeping the
-/// retained audio; sound that proves to be a keyboard rather than a voice is
+/// retained audio; sound that proves to be noise rather than a voice is
 /// taken back with [resumeHeldTurn], which re-enqueues the remainder from the
 /// exact point the hold cut it.
 final class ConversationPlaybackCoordinator {
@@ -94,7 +94,7 @@ final class ConversationPlaybackCoordinator {
   }
 
   /// Silences the turn on a suspected interruption while keeping its
-  /// unplayed audio, so a false alarm — a keyboard, a knock — costs a beat
+  /// unplayed audio, so a false alarm — a burst of noise — costs a beat
   /// of silence instead of the rest of the answer.
   ///
   /// Returns false when there is nothing audible to hold, a hold is already
@@ -119,8 +119,8 @@ final class ConversationPlaybackCoordinator {
   /// player, trimmed to the point the hold silenced it, and returns the
   /// re-enqueued chunks so the caller can rebuild its playback model.
   ///
-  /// The remainder stays retained afterwards, because the next keyboard
-  /// click may hold the same turn again.
+  /// The remainder stays retained afterwards, because the next noise
+  /// burst may hold the same turn again.
   List<Uint8List> resumeHeldTurn() {
     final heldAt = _heldAt;
     if (heldAt == null) {

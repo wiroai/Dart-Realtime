@@ -3,13 +3,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/core/audio/pcm_noise_gate.dart';
 import 'package:wiro_realtime/core/audio/voice_engine_pcm_audio.dart';
-import 'package:wiro_realtime/core/auth/wiro_auth_headers.dart';
-import 'package:wiro_realtime/core/network/dio_wiro_http_client.dart';
-import 'package:wiro_realtime/core/network/wiro_api_client.dart';
-import 'package:wiro_realtime/core/network/wiro_http_client.dart';
-import 'package:wiro_realtime/core/realtime/realtime_session.dart';
+import 'package:wiro_realtime/core/realtime/realtime_session_dependencies.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
-import 'package:wiro_realtime/core/realtime/web_socket_realtime_socket_client.dart';
 import 'package:wiro_realtime/features/speech_to_speech/service/speech_to_speech_session_service.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/speech_to_speech_view.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view_model/speech_to_speech_view_model.dart';
@@ -23,27 +18,26 @@ import 'package:wiro_realtime/features/speech_to_speech/view_model/speech_to_spe
 /// are read while the task is being created.
 mixin SpeechToSpeechViewMixin on State<SpeechToSpeechView> {
   late final SpeechToSpeechViewModel speechToSpeechViewModel;
-  late final WiroHttpClient _httpClient;
+  late final RealtimeSessionDependencies _dependencies;
   late final AppLifecycleListener _appLifecycleListener;
 
   @override
   void initState() {
     super.initState();
-    _httpClient = DioWiroHttpClient();
+    _dependencies = RealtimeSessionDependencies(
+      credentials: widget.credentials,
+      // Measured ready waits sit around thirteen seconds — a hair under
+      // the default — and the socket replays nothing to a subscriber
+      // that arrives after an event fired, so a wait that gives up
+      // early strands a task that was about to speak.
+      readyTimeout: const Duration(seconds: 60),
+    );
     final audio = VoiceEnginePcmAudioPair();
     speechToSpeechViewModel = SpeechToSpeechViewModel(
       sessionService: SpeechToSpeechSessionService(
         audioSession: widget.audioSession,
-        apiClient: DefaultWiroApiClient(
-          _httpClient,
-          WiroAuthHeaders(credentials: widget.credentials),
-        ),
-        sessionFactory: ({required taskId, required taskToken}) =>
-            RealtimeSession(
-              socketClient: WebSocketRealtimeSocketClient(),
-              taskId: taskId,
-              taskToken: taskToken,
-            ),
+        apiClient: _dependencies.apiClient,
+        sessionFactory: _dependencies.createSession,
         recorder: audio.recorder,
         player: audio.player,
         sessionGuard: widget.sessionGuard,
@@ -78,7 +72,7 @@ mixin SpeechToSpeechViewMixin on State<SpeechToSpeechView> {
   void dispose() {
     _appLifecycleListener.dispose();
     speechToSpeechViewModel.dispose();
-    _httpClient.close();
+    _dependencies.close();
     super.dispose();
   }
 

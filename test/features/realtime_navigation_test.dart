@@ -34,7 +34,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Transcription'), findsWidgets);
     expect(
-      find.text('mistralai/voxtral-mini-4b-realtime-2602'),
+      find.byKey(const ValueKey<String>('transcription-mic-button')),
       findsOneWidget,
     );
 

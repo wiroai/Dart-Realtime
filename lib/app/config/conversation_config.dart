@@ -25,6 +25,23 @@ abstract final class ConversationConfig {
   /// Which Wiro model runs the conversation.
   static const ModelDefinition model = WiroModelCatalog.gptRealtimeMini;
 
+  /// The engineering parameters, for the developer who needs them.
+  ///
+  /// Everything [model] accepts beyond the persona and the voice — the
+  /// transcription model, audio formats and rates, turn detection — is
+  /// listed with its options in [WiroModelCatalog]. A key named here
+  /// replaces that catalog default when the task is created; anything
+  /// left out keeps it. Keys are the catalog's field ids, values are
+  /// their string form.
+  ///
+  /// [persona] and [voice] have their own fields above and win over
+  /// entries here, so this map cannot silently contradict them.
+  static const Map<String, String> parameters = {
+    // 'transcription_model': 'whisper-1',
+    // 'turn_detection_threshold': '0.6',
+    // 'turn_detection_silence_ms': '400',
+  };
+
   /// How long one conversation may run before it ends itself.
   ///
   /// A live session is a billed Wiro task and a phone can sit in a pocket

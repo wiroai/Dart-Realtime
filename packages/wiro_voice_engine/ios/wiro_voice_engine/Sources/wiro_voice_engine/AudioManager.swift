@@ -106,10 +106,10 @@ public class AudioManager {
     ///
     /// The engine dies whenever the Dart side deactivates the shared audio
     /// session — a failed turn, a reconnect after the server drops the
-    /// socket. The engine object itself survives, so every later
-    /// startRecording or playback call lands here first and revives it
-    /// instead of installing taps on a dead graph that never delivers a
-    /// single buffer.
+    /// socket. The engine object itself survives, so every later playback
+    /// call lands here first and revives it instead of scheduling onto a
+    /// dead graph. Capture goes through [restartEngineForCapture] instead,
+    /// because a revived engine is not good enough for the microphone.
     @discardableResult
     private func ensureEngineRunning() -> Bool {
         // Both the recording path (main thread) and the playback path (the
@@ -222,7 +222,7 @@ public class AudioManager {
         }
         // A tap on a stopped engine installs fine and then never fires;
         // the engine must be alive before the tap means anything.
-        guard ensureEngineRunning() else {
+        guard restartEngineForCapture() else {
             return audioChunkPublisher.eraseToAnyPublisher()
         }
         guard installRecordingTap() else {
@@ -230,6 +230,58 @@ public class AudioManager {
         }
         isRecording = true
         return audioChunkPublisher.eraseToAnyPublisher()
+    }
+
+    /// Rebuilds the engine before every capture session instead of reviving
+    /// whatever the previous conversation left behind.
+    ///
+    /// After the Dart side deactivates and reactivates the shared audio
+    /// session between conversations, an engine that survived — or was
+    /// revived by a stray configuration change — can keep reporting itself
+    /// as running while its voice-processed input renders pure silence.
+    /// Buffers still arrive, so no watchdog that counts them can tell the
+    /// difference, and the user talks to a model that hears nothing. iOS
+    /// only clears that state when the engine is fully stopped, voice
+    /// processing is asserted again, and the engine starts against the
+    /// session that is active now.
+    private func restartEngineForCapture() -> Bool {
+        // Ordered ahead of the lock: playback tasks take the same lock in
+        // ensureEngineRunning, and a sync wait while holding it deadlocks.
+        stopPlaybackAndWait()
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+        audioEngine.stop()
+        audioEngine.reset()
+        do {
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            reportError("Engine restart failed: \(error.localizedDescription)")
+            return false
+        }
+        if enableAEC {
+            // The off-and-on pass is the documented way out of the muted
+            // voice-processing state; a toggle iOS refuses leaves the
+            // previous AEC state in place and capture is still worth
+            // starting.
+            do {
+                if inputNode.isVoiceProcessingEnabled {
+                    try inputNode.setVoiceProcessingEnabled(false)
+                }
+                try inputNode.setVoiceProcessingEnabled(true)
+            } catch {
+                reportError(
+                    "Voice processing toggle failed: \(error.localizedDescription)"
+                )
+            }
+        }
+        do {
+            try audioEngine.start()
+            primePlayerNode()
+            return true
+        } catch {
+            reportError("Engine restart failed: \(error.localizedDescription)")
+            return false
+        }
     }
 
     public func stopRecording() {
@@ -326,12 +378,15 @@ public class AudioManager {
     }
 
     public func handleConfigurationChange() {
-        if !audioEngine.isRunning {
-            if ensureEngineRunning(), isRecording {
-                // The route change may have altered the input format, so
-                // the tap is rebuilt against whatever the microphone is now.
-                installRecordingTap()
-            }
+        // Only a live capture is worth reviving. Restarting an idle engine
+        // here would re-activate an audio session the Dart side already
+        // let go of, and leave a zombie engine for the next conversation
+        // to inherit.
+        guard isRecording, !audioEngine.isRunning else { return }
+        if ensureEngineRunning() {
+            // The route change may have altered the input format, so the
+            // tap is rebuilt against whatever the microphone is now.
+            installRecordingTap()
         }
     }
 

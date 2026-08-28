@@ -133,21 +133,47 @@ abstract final class AppTheme {
           ),
         ),
       ),
-      navigationBarTheme: const NavigationBarThemeData(
-        backgroundColor: AppColors.backgroundWarm,
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: AppColors.surface,
         indicatorColor: AppColors.greenContainer,
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        iconTheme: WidgetStatePropertyAll(
-          IconThemeData(color: AppColors.inkMuted),
-        ),
-        labelTextStyle: WidgetStatePropertyAll(
-          TextStyle(
-            color: AppColors.inkSecondary,
-            fontSize: 12,
-            fontWeight: FontWeight.w500,
+        // No pill in the wiro radius scale, so the indicator is a rounded
+        // rectangle like every other container on the site.
+        indicatorShape: const RoundedRectangleBorder(
+          side: BorderSide(color: AppColors.greenBorder),
+          borderRadius: BorderRadius.all(
+            Radius.circular(ProjectRadius.card),
           ),
         ),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(
+              color: AppColors.greenText,
+              size: 22,
+            );
+          }
+          return const IconThemeData(
+            color: AppColors.inkMuted,
+            size: 22,
+          );
+        }),
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+              color: AppColors.greenText,
+              fontSize: 12,
+              letterSpacing: 0.1,
+              fontWeight: FontWeight.w600,
+            );
+          }
+          return const TextStyle(
+            color: AppColors.inkMuted,
+            fontSize: 12,
+            letterSpacing: 0.1,
+            fontWeight: FontWeight.w500,
+          );
+        }),
       ),
       chipTheme: baseTheme.chipTheme.copyWith(
         backgroundColor: AppColors.backgroundWarm,

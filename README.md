@@ -1,110 +1,97 @@
+<div align="center">
+
+<img src="https://wiro.ai/images/logos/logo/logo.png" alt="Wiro" width="180" />
+
 # Wiro Realtime for Flutter
 
-Official Wiro example for three realtime audio flows on Android and iOS:
+**Official Flutter example for live voice AI on [Wiro](https://wiro.ai) —
+speech-to-speech conversation, realtime transcription, and text-to-speech**
 
-- Conversation: speech-to-speech (`openai/gpt-realtime-mini`)
-- Transcription: speech-to-text (`mistralai/voxtral-mini-4b-realtime-2602`)
-- Speech: text-to-speech (`openmoss/moss-tts-realtime`, `openbmb/voxcpm2`)
+[![Flutter](https://img.shields.io/badge/Flutter-stable-02569B?style=for-the-badge&logo=flutter&logoColor=white)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.13%2B-0175C2?style=for-the-badge&logo=dart&logoColor=white)](https://dart.dev)
+[![Platforms](https://img.shields.io/badge/platforms-Android%20%7C%20iOS-3DDC84?style=for-the-badge)](#requirements)
+[![MIT](https://img.shields.io/badge/license-MIT-6f42c1?style=for-the-badge)](LICENSE)
 
-## Make it yours
+[Docs](https://wiro.ai/docs) · [Models](https://wiro.ai/models) · [Dashboard](https://wiro.ai/panel) · [Create Project](https://wiro.ai/panel/project/new)
 
-`lib/app/config/conversation_config.dart` holds the persona, the voice, the
-model and the session time limit. Editing that file is the whole of turning
-this example into a product. `AGENTS.md` maps the rest of the repository for
-coding agents.
+</div>
 
-## Credentials
+<!--
+DEMO VIDEO
+Drop the screen recording here. Easiest path: drag the .mp4 into this
+README while editing on GitHub — it uploads and inserts a
+user-attachments URL that renders as an inline player.
+-->
 
-Credentials supplied through `--dart-define` are for local development only.
-They are compiled into the application binary. Do not distribute builds that
-contain real credentials. Production apps should authenticate through a
-controlled backend or short-lived credential flow.
+<!-- https://github.com/user-attachments/assets/VIDEO_ID -->
 
-This repository includes authenticated REST Run requests, the realtime
-WebSocket protocol, bounded PCM capture/playback primitives, and the complete
-GPT Realtime Mini conversation, Voxtral transcription, and MOSS
-text-to-speech flows. It also includes bounded transport timeouts, cross-feature
-single-session protection, audio interruption and route handling, safe PCM
-overflow shedding, sanitized failure codes, and profile counters. Android and
-iPhone physical-device profiling remains pending; VoxCPM2 stays deferred until
-MOSS passes physical-device playback acceptance.
+## What's inside
 
-## Schema snapshot
+Three realtime audio flows, each a tab in the app, each backed by a live
+Wiro model over one WebSocket protocol:
 
-Verified against Wiro MCP `search_docs` and `get_model_schema` on
-**2026-08-21**. No paid model run was started during research.
+| Flow | Model | What it does |
+| --- | --- | --- |
+| 🎙️ Conversation | [`openai/gpt-realtime-mini`](https://wiro.ai/models) | Full-duplex voice chat with barge-in |
+| 📝 Transcription | [`mistralai/voxtral-mini-4b-realtime-2602`](https://wiro.ai/models) | Live speech-to-text as you talk |
+| 🔊 Speech | [`openmoss/moss-tts-realtime`](https://wiro.ai/models) | Streaming text-to-speech playback |
 
-| Example | Model | First-pass fields |
-|---|---|---|
-| Conversation | `openai/gpt-realtime-mini` | `voice`, `system_instructions`, `transcription_model`, `input_audio_format`, `output_audio_format`, `input_audio_rate`, `output_audio_rate`, `turn_detection_threshold`, `turn_detection_silence_ms` |
-| Transcription | `mistralai/voxtral-mini-4b-realtime-2602` | `transcriptionDelay` (`balanced` default) |
-| Speech | `openmoss/moss-tts-realtime` | `text` only |
-| Speech | `openbmb/voxcpm2` | `prompt`, `cfgValue`, `inferenceSteps` |
+<!--
+SCREENSHOTS
+Export three portrait screenshots (one per tab) into doc/images/ and
+uncomment. ~260 px wide each sits nicely side by side.
+-->
 
-### Differences from the original implementation notes
+<!--
+<div align="center">
+<table>
+  <tr>
+    <td align="center"><b>Conversation</b></td>
+    <td align="center"><b>Transcription</b></td>
+    <td align="center"><b>Speech</b></td>
+  </tr>
+  <tr>
+    <td><img src="doc/images/conversation.png" width="260" alt="Speech-to-speech conversation" /></td>
+    <td><img src="doc/images/transcription.png" width="260" alt="Realtime transcription" /></td>
+    <td><img src="doc/images/speech.png" width="260" alt="Text-to-speech" /></td>
+  </tr>
+</table>
+</div>
+-->
 
-- Audio format select values are `audio/pcm`, `audio/pcmu`, and `audio/pcma`.
-- Sample-rate select values are the strings `24000` and `8000`.
-- `openbmb/voxcpm2` also exposes `inputAudio`, `inputAudio2`, and
-  `promptAudioText`. Those stay out of the first working TTS pass.
-- MCP `get_model_schema` marked `cfgValue` required without a default. The
-  live model page default is `2.0`; `inferenceSteps` default is `10`.
-- MCP docs do not specify signature encoding. The official model pages use
-  `openssl dgst -sha256 -hmac`, which is lowercase hex.
-- Many API failures return HTTP 200 with `result: false`. Auth failures
-  return HTTP 401.
-- PCM sample endianness is not documented. This example will treat PCM as
-  little-endian until a physical-device stream confirms it.
+## Features
 
-## Protocol
+- Live speech-to-speech conversation with voice activity detection,
+  barge-in, and a noise gate
+- Realtime microphone transcription with streaming partial results
+- Streaming text-to-speech with bounded PCM playback
+- One native audio graph for capture and playback, so the OS echo
+  canceller (AEC) actually works — see
+  [`packages/wiro_voice_engine`](packages/wiro_voice_engine)
+- Signed REST Run requests and the full Wiro realtime WebSocket protocol
+- Bounded capture/playback queues, safe PCM overflow shedding, audio
+  route and interruption handling
+- Cross-feature guard so two tabs never hold the microphone at once
+- Automatic reconnect to the same task on socket drops, with a bounded
+  restart budget
+- Session lifecycle fully covered by tests — no device needed to verify
+  the plumbing
 
-```text
-REST:      https://api.wiro.ai/v1
-WebSocket: wss://socket.wiro.ai/v1
-Run:       POST /Run/{owner}/{model}
-```
+## Requirements
 
-Subscribe after Run:
-
-```json
-{ "type": "task_info", "tasktoken": "TASK_TOKEN" }
-```
-
-Wait for `task_stream_ready` before sending microphone PCM.
-
-End:
-
-```json
-{ "type": "task_session_end", "tasktoken": "TASK_TOKEN" }
-```
-
-Audio wire format: PCM signed Int16, 24 kHz, mono. Binary frame is
-`UTF8(tasktoken + "|") + pcm_bytes`. Capture chunks are 20 ms (480 samples,
-960 bytes before the prefix).
-
-Authentication:
-
-- API-key-only: `x-api-key`
-- Signature: `x-api-key`, `x-nonce`, `x-signature` where
-  `HMAC-SHA256(key=API_KEY, message=API_SECRET + NONCE)`
-
-Leave `WIRO_API_SECRET` empty for API-key-only projects.
+- Flutter stable with Dart `3.13.1` or newer
+- A **physical** Android or iOS device — simulators have no usable
+  microphone path
+- A [Wiro project and API key](https://wiro.ai/panel/project/new)
 
 ## Run
 
-Physical devices are required for microphone and playback acceptance.
-Simulator audio is not an acceptance criterion.
-
 ```sh
 flutter pub get
-flutter analyze
-flutter test
 flutter run --dart-define=WIRO_API_KEY=YOUR_API_KEY
 ```
 
-`WIRO_API_KEY` is required. The app fails before `runApp` when it is missing.
-
-For signature-based projects, also provide the secret:
+For signature-based Wiro projects, also pass the secret:
 
 ```sh
 flutter run \
@@ -112,10 +99,105 @@ flutter run \
   --dart-define=WIRO_API_SECRET=YOUR_API_SECRET
 ```
 
-Do not provide `WIRO_API_SECRET` for API-key-only projects.
+Leave `WIRO_API_SECRET` out for API-key-only projects. The app fails
+before `runApp` when `WIRO_API_KEY` is missing.
+
+> **Credentials warning:** values supplied through `--dart-define` are
+> compiled into the binary and are for local development only. Never
+> distribute builds containing real credentials — production apps should
+> authenticate through a controlled backend or a short-lived credential
+> flow.
+
+## Make it yours
+
+[`lib/app/config/conversation_config.dart`](lib/app/config/conversation_config.dart)
+holds the persona, the voice, the model, and the session time limit.
+Editing that one file is the whole of turning this example into a
+product.
+
+```dart
+static const String persona = '...who the assistant is...';
+static const String voice = 'marin';
+static const Duration maxSessionDuration = Duration(minutes: 10);
+```
+
+Common changes:
+
+- **Give the assistant a job** — rewrite `persona`.
+- **Change the voice** — set `voice` to any option the model catalog
+  lists.
+- **Tune the engineering parameters** — `parameters` overrides the
+  catalog defaults for turn detection, audio formats, and rates.
+- **Ship only the conversation** — delete the other two feature folders;
+  `core/` is untouched. `AGENTS.md` has the exact steps.
+
+## How a conversation runs
+
+```text
+REST:      https://api.wiro.ai/v1
+WebSocket: wss://socket.wiro.ai/v1
+Run:       POST /Run/{owner}/{model}
+```
+
+1. `POST /Run/{owner}/{model}` returns a task id and a task token.
+2. A WebSocket opens and subscribes with
+   `{ "type": "task_info", "tasktoken": "..." }`.
+3. After `task_stream_ready`, 20 ms PCM chunks stream up as
+   `UTF8(tasktoken + "|") + pcm_bytes`; audio and transcripts stream
+   back.
+4. `task_session_end` closes the session — sent by the app on leave, or
+   by the server at the time limit.
+
+Audio is signed 16-bit PCM, 24 kHz, mono, little-endian on both sides.
+
+Authentication is `x-api-key` alone, or `x-api-key` + `x-nonce` +
+`x-signature` where the signature is
+`HMAC-SHA256(key = API_KEY, message = API_SECRET + NONCE)`.
+
+## Project layout
+
+```text
+lib/
+ app/       shell, theme, layout tokens, config, shared widgets
+ core/      reusable Wiro plumbing — auth, network, realtime, audio
+ features/  one folder per tab: view/, view_model/, service/
+packages/
+ wiro_voice_engine/  native AEC audio bridge (AVAudioEngine / AudioRecord)
+```
+
+`core/` has no dependency on any feature and covers the whole Wiro
+integration — it is the part worth lifting into your own app.
+[`AGENTS.md`](AGENTS.md) maps the repository in depth for coding agents
+and humans alike.
 
 ## Tests
 
 ```sh
+flutter analyze
 flutter test
 ```
+
+Tests mirror `lib/` and ship fakes for audio, network, and the socket,
+so the entire session lifecycle runs without a device.
+
+## Documentation
+
+- [Wiro documentation](https://wiro.ai/docs)
+- [Available models](https://wiro.ai/models)
+- [Dart SDK — Wiro QuickStart](https://github.com/wiroai/Dart-QuickStart)
+
+## License
+
+MIT
+
+---
+
+<div align="center">
+
+<img src="https://wiro.ai/images/koala/accent-heavy-koala.png" alt="Wiro" width="80" />
+
+**Built with 💚 by the Wiro team**
+
+[wiro.ai](https://wiro.ai) · [GitHub @wiroai](https://github.com/wiroai)
+
+</div>

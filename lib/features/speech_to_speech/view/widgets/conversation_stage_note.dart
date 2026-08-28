@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/app/layout/project_duration.dart';
-import 'package:wiro_realtime/app/layout/project_spacing.dart';
 import 'package:wiro_realtime/app/state/value_selector_builder.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 import 'package:wiro_realtime/features/speech_to_speech/view/constants/conversation_connect_progress.dart';
@@ -53,12 +52,13 @@ class ConversationStageNote extends StatelessWidget {
         final connecting =
             state.reportsConnecting && stage == ConversationStage.connecting;
         // Height and content are animated separately: the block grows into
-        // its new size while the words cross-fade inside it, so the orb
-        // above never jumps to make room for a line of text.
+        // its new size while the words cross-fade inside it, growing upward
+        // into the empty stage so the orb below never moves to make room
+        // for a line of text.
         return AnimatedSize(
           duration: ProjectDuration.stageSwap,
           curve: Curves.easeOutCubic,
-          alignment: Alignment.topCenter,
+          alignment: Alignment.bottomCenter,
           child: AnimatedSwitcher(
             duration: ProjectDuration.stageSwap,
             child: connecting
@@ -97,7 +97,6 @@ class _ConnectingNote extends StatelessWidget {
     return Column(
       key: const ValueKey<String>('connect-note'),
       children: [
-        const SizedBox(height: ProjectSpacing.md),
         AnimatedSwitcher(
           duration: ProjectDuration.transition,
           child: Text(
@@ -118,7 +117,7 @@ class _ConnectingNote extends StatelessWidget {
   }
 }
 
-/// One line under the orb, and an escape hatch only when tapping again
+/// One line over the orb, and an escape hatch only when tapping again
 /// cannot possibly help.
 class _FailureNote extends StatelessWidget {
   const _FailureNote({required this.message, this.onOpenSettings});
@@ -128,26 +127,23 @@ class _FailureNote extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: ProjectSpacing.md),
-      child: Column(
-        children: [
-          Text(
-            message,
-            key: const ValueKey<String>('failure-note'),
-            textAlign: TextAlign.center,
-            style: context.textTheme.bodySmall?.copyWith(
-              color: context.colorScheme.error,
-            ),
+    return Column(
+      children: [
+        Text(
+          message,
+          key: const ValueKey<String>('failure-note'),
+          textAlign: TextAlign.center,
+          style: context.textTheme.bodySmall?.copyWith(
+            color: context.colorScheme.error,
           ),
-          if (onOpenSettings != null)
-            TextButton(
-              key: const ValueKey<String>('open-settings-control'),
-              onPressed: onOpenSettings,
-              child: const Text(ConversationCopy.openSystemSettings),
-            ),
-        ],
-      ),
+        ),
+        if (onOpenSettings != null)
+          TextButton(
+            key: const ValueKey<String>('open-settings-control'),
+            onPressed: onOpenSettings,
+            child: const Text(ConversationCopy.openSystemSettings),
+          ),
+      ],
     );
   }
 }

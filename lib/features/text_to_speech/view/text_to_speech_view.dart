@@ -1,17 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
+import 'package:wiro_realtime/app/layout/project_spacing.dart';
 import 'package:wiro_realtime/app/state/value_selector_builder.dart';
-import 'package:wiro_realtime/app/widgets/model_parameter_form.dart';
-import 'package:wiro_realtime/app/widgets/protocol_event_panel.dart';
-import 'package:wiro_realtime/app/widgets/realtime_sliver_app_bar.dart';
-import 'package:wiro_realtime/app/widgets/session_controls.dart';
+import 'package:wiro_realtime/app/widgets/session_settings_menu.dart';
 import 'package:wiro_realtime/core/audio/realtime_audio_session.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';
 import 'package:wiro_realtime/core/models/model_definition.dart';
 import 'package:wiro_realtime/core/models/wiro_model_catalog.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_guard.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
+import 'package:wiro_realtime/features/text_to_speech/view/constants/speech_copy.dart';
 import 'package:wiro_realtime/features/text_to_speech/view/mixin/text_to_speech_view_mixin.dart';
+import 'package:wiro_realtime/features/text_to_speech/view/widgets/speech_play_button.dart';
+import 'package:wiro_realtime/features/text_to_speech/view/widgets/speech_prompt_editor.dart';
+import 'package:wiro_realtime/features/text_to_speech/view/widgets/speech_status_strip.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/state/text_to_speech_state.dart';
 import 'package:wiro_realtime/features/text_to_speech/view_model/text_to_speech_view_model.dart';
 
@@ -41,172 +43,142 @@ class TextToSpeechView extends StatefulWidget {
 
 class _TextToSpeechViewState extends State<TextToSpeechView>
     with TextToSpeechViewMixin {
+  static const double _contentMaxWidth = 520;
+
+  // The editor owns the screen and scrolls inside its own area, so the
+  // page itself never scrolls: the play button stays under the thumb no
+  // matter how long the text grows.
   @override
   Widget build(BuildContext context) {
-    return CustomScrollView(
-      slivers: [
-        const RealtimeSliverAppBar(title: 'Speech'),
-        SliverPadding(
-          padding: ProjectPadding.page,
-          sliver: SliverToBoxAdapter(
-            child: TextToSpeechBody(viewModel: textToSpeechViewModel),
+    // Read above this view's own Scaffold, which consumes the inset and
+    // hides it from the body. While the keyboard is up the writer is
+    // writing, so the play controls yield their space to the text.
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(SpeechCopy.destinationTitle),
+        actions: [
+          _ModelAction(viewModel: textToSpeechViewModel),
+        ],
+      ),
+      // The editor fills the screen, so the only place a thumb can land
+      // to put the keyboard away is the control area below it; a tap
+      // there should read as "done typing" rather than be swallowed.
+      body: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+        child: Padding(
+          padding: ProjectPadding.stage,
+          child: Align(
+            alignment: Alignment.topCenter,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: _contentMaxWidth),
+              child: TextToSpeechBody(
+                viewModel: textToSpeechViewModel,
+                keyboardOpen: keyboardOpen,
+              ),
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
 
-/// Each section subscribes to the one value it draws, so the elapsed
-/// clock ticking does not redraw the form, and typing into the prompt
-/// does not redraw anything but the character count.
+/// Each section subscribes to the one value it draws, so a session state
+/// change does not redraw the editor, and typing into the prompt does
+/// not redraw anything but the character count.
 class TextToSpeechBody extends StatelessWidget {
-  const TextToSpeechBody({required this.viewModel, super.key});
+  const TextToSpeechBody({
+    required this.viewModel,
+    this.keyboardOpen = false,
+    super.key,
+  });
 
   final TextToSpeechViewModel viewModel;
+
+  /// Whether the software keyboard is on screen.
+  ///
+  /// The controls below the editor hide behind it rather than squeeze
+  /// the text into whatever sliver the keyboard leaves; a session cannot
+  /// start mid-edit anyway, so nothing tappable is lost.
+  final bool keyboardOpen;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        ValueSelectorBuilder<TextToSpeechState, _ModelSelection>(
-          valueListenable: viewModel,
-          selector: (state) => (
-            model: state.selectedModel,
-            active: state.sessionState.isActive,
-          ),
-          builder: (context, selection) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              TtsModelSelector(
-                viewModel: viewModel,
-                selectedModel: selection.model,
-                enabled: !selection.active,
-              ),
-              const SizedBox(height: 12),
-              ModelParameterForm(
-                key: ValueKey<String>(selection.model.modelSlug),
-                fields: selection.model.firstPassFields,
-                values: viewModel.parameters,
-                enabled: !selection.active,
-              ),
-            ],
+        Expanded(
+          child: ValueSelectorBuilder<TextToSpeechState, _EditorSelection>(
+            valueListenable: viewModel,
+            selector: (state) => (
+              modelSlug: state.selectedModel.modelSlug,
+              active: state.sessionState.isActive,
+            ),
+            builder: (context, selection) => SpeechPromptEditor(
+              // A new model brings a new parameter set, so the editor
+              // re-binds to the new prompt notifier.
+              key: ValueKey<String>('tts-editor-${selection.modelSlug}'),
+              promptNotifier: viewModel.promptNotifier,
+              enabled: !selection.active,
+            ),
           ),
         ),
-        TtsCharacterCount(viewModel: viewModel),
-        ValueSelectorBuilder<TextToSpeechState, RealtimeSessionState>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState,
-          builder: (context, sessionState) =>
-              SessionStatusLabel(sessionState: sessionState),
-        ),
-        ValueSelectorBuilder<TextToSpeechState, Duration>(
-          valueListenable: viewModel,
-          selector: (state) => state.elapsed,
-          builder: (context, elapsed) => ElapsedTimeLabel(elapsed: elapsed),
-        ),
-        ValueSelectorBuilder<TextToSpeechState, bool>(
-          valueListenable: viewModel,
-          selector: (state) => state.isPlaying,
-          builder: (context, playing) => Text(playing ? 'Playing' : 'Idle'),
-        ),
-        const SizedBox(height: 8),
-        ValueSelectorBuilder<TextToSpeechState, RealtimeSessionState>(
-          valueListenable: viewModel,
-          selector: (state) => state.sessionState,
-          builder: (context, sessionState) => StartStopControls(
-            sessionState: sessionState,
-            startLabel: 'Play',
-            stopLabel: 'Stop',
-            onStart: viewModel.start,
-            onStop: viewModel.stop,
-            sessionGuard: viewModel.sessionGuard,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ValueSelectorBuilder<TextToSpeechState, String?>(
-          valueListenable: viewModel,
-          selector: (state) => state.errorMessage,
-          builder: (context, message) =>
-              SanitizedErrorText(errorMessage: message),
-        ),
-        ValueSelectorBuilder<TextToSpeechState, _PanelSelection>(
-          valueListenable: viewModel,
-          selector: (state) => (
-            expanded: state.protocolExpanded,
-            events: state.protocolEvents,
-          ),
-          builder: (context, panel) => ProtocolEventPanel(
-            expanded: panel.expanded,
-            events: panel.events,
-            onToggle: viewModel.toggleProtocolPanel,
-          ),
-        ),
+        if (!keyboardOpen) ...[
+          SpeechStatusStrip(viewModel: viewModel),
+          const SizedBox(height: ProjectSpacing.sm),
+          Center(child: SpeechPlayButton(viewModel: viewModel)),
+        ],
       ],
     );
   }
 }
 
-typedef _ModelSelection = ({ModelDefinition model, bool active});
+typedef _EditorSelection = ({String modelSlug, bool active});
 
-typedef _PanelSelection = ({bool expanded, List<String> events});
-
-class TtsModelSelector extends StatelessWidget {
-  const TtsModelSelector({
-    required this.viewModel,
-    required this.selectedModel,
-    required this.enabled,
-    super.key,
-  });
+/// The voice model, parked in the bar the way settings are.
+///
+/// The value is sent once when the task starts, so the menu is locked
+/// while a session runs.
+class _ModelAction extends StatelessWidget {
+  const _ModelAction({required this.viewModel});
 
   final TextToSpeechViewModel viewModel;
-  final ModelDefinition selectedModel;
-  final bool enabled;
+
+  static const List<ModelDefinition> _models = [
+    WiroModelCatalog.mossTtsRealtime,
+    WiroModelCatalog.voxcpm2,
+  ];
 
   @override
   Widget build(BuildContext context) {
-    const models = [WiroModelCatalog.mossTtsRealtime];
-    return DropdownButtonFormField<String>(
-      key: const ValueKey<String>('tts-model-selector'),
-      initialValue: selectedModel.modelSlug,
-      items: [
-        for (final model in models)
-          DropdownMenuItem<String>(
-            value: model.modelSlug,
-            child: Text(model.displayName),
-          ),
-      ],
-      onChanged: enabled
-          ? (slug) {
-              for (final model in models) {
-                if (model.modelSlug == slug) {
-                  viewModel.selectModel(model);
-                  return;
-                }
-              }
+    return ValueSelectorBuilder<TextToSpeechState, _ModelSelection>(
+      valueListenable: viewModel,
+      selector: (state) => (
+        modelSlug: state.selectedModel.modelSlug,
+        idle: state.sessionState.isIdleLike,
+      ),
+      builder: (context, selection) => SessionSettingsMenu(
+        menuKey: const ValueKey<String>('tts-model-selector'),
+        tooltip: SpeechCopy.modelTooltip,
+        enabled: selection.idle,
+        selectedValue: selection.modelSlug,
+        options: [
+          for (final model in _models)
+            (value: model.modelSlug, label: model.displayName),
+        ],
+        onSelected: (slug) {
+          for (final model in _models) {
+            if (model.modelSlug == slug) {
+              viewModel.selectModel(model);
+              return;
             }
-          : null,
-      decoration: const InputDecoration(labelText: 'Model'),
+          }
+        },
+      ),
     );
   }
 }
 
-class TtsCharacterCount extends StatelessWidget {
-  const TtsCharacterCount({required this.viewModel, super.key});
-
-  final TextToSpeechViewModel viewModel;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: viewModel.promptNotifier,
-      builder: (context, value, _) {
-        return Align(
-          alignment: Alignment.centerRight,
-          child: Text('${value.length} characters'),
-        );
-      },
-    );
-  }
-}
+typedef _ModelSelection = ({String modelSlug, bool idle});

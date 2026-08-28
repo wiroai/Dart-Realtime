@@ -11,7 +11,6 @@ final class TextToSpeechState extends Equatable {
   const TextToSpeechState({
     required this.selectedModel,
     this.sessionState = RealtimeSessionState.idle,
-    this.elapsed = Duration.zero,
     this.isPlaying = false,
     this.errorMessage,
     this.protocolEvents = const [],
@@ -20,7 +19,6 @@ final class TextToSpeechState extends Equatable {
 
   final ModelDefinition selectedModel;
   final RealtimeSessionState sessionState;
-  final Duration elapsed;
   final bool isPlaying;
   final String? errorMessage;
   final List<String> protocolEvents;
@@ -29,7 +27,6 @@ final class TextToSpeechState extends Equatable {
   TextToSpeechState copyWith({
     ModelDefinition? selectedModel,
     RealtimeSessionState? sessionState,
-    Duration? elapsed,
     bool? isPlaying,
     Object? errorMessage = _unset,
     List<String>? protocolEvents,
@@ -38,7 +35,6 @@ final class TextToSpeechState extends Equatable {
     return TextToSpeechState(
       selectedModel: selectedModel ?? this.selectedModel,
       sessionState: sessionState ?? this.sessionState,
-      elapsed: elapsed ?? this.elapsed,
       isPlaying: isPlaying ?? this.isPlaying,
       errorMessage: identical(errorMessage, _unset)
           ? this.errorMessage
@@ -52,7 +48,6 @@ final class TextToSpeechState extends Equatable {
   List<Object?> get props => [
     selectedModel,
     sessionState,
-    elapsed,
     isPlaying,
     errorMessage,
     protocolEvents,
