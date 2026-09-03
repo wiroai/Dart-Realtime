@@ -69,6 +69,9 @@ Wiro model over one WebSocket protocol:
 
 The iOS project uses Swift Package Manager — there is no Podfile and no
 CocoaPods setup to run. Use a Flutter version with SPM support enabled.
+The project ships without a signing team: open `ios/Runner.xcworkspace`
+once and pick yours under **Runner → Signing & Capabilities** before the
+first device run.
 
 ## Run
 
@@ -166,13 +169,24 @@ flutter test
 ```
 
 Tests mirror `lib/` and ship fakes for audio, network, and the socket,
-so the entire session lifecycle runs without a device.
+so the entire session lifecycle runs without a device. CI runs the same
+two commands, plus `flutter analyze` for `packages/wiro_voice_engine`,
+on every push and pull request.
+
+## Contributing
+
+Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+Security problems go to [`SECURITY.md`](SECURITY.md), not to a public
+issue.
 
 ## Documentation
 
 - [Wiro documentation](https://wiro.ai/docs)
 - [Available models](https://wiro.ai/models)
 - [Dart SDK — Wiro QuickStart](https://github.com/wiroai/Dart-QuickStart)
+- [Kotlin counterpart](https://github.com/wiroai/Kotlin-Realtime)
+- [Swift counterpart](https://github.com/wiroai/Swift-Realtime)
+- [React Native counterpart](https://github.com/wiroai/ReactNative-Realtime)
 
 ## License
 
