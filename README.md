@@ -6,7 +6,7 @@
 
 Realtime voice AI for Android and iOS in Flutter and Dart: live conversation, speech-to-text and text-to-speech with the Wiro AI API.
 
-[![Flutter: Android and iOS 15.0+](https://img.shields.io/badge/Flutter-Android%20%C2%B7%20iOS%2015.0%2B-111111?style=for-the-badge&color=111111&logo=flutter&logoColor=white)](#requirements) [![Dart 3.13.1+](https://img.shields.io/badge/Dart-3.13.1%2B-111111?style=for-the-badge&color=111111&logo=dart&logoColor=white)](https://dart.dev) [![CI](https://img.shields.io/github/actions/workflow/status/wiroai/Dart-Realtime/ci.yml?branch=main&style=for-the-badge&color=111111&label=CI&logo=githubactions&logoColor=white)](https://github.com/wiroai/Dart-Realtime/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-111111?style=for-the-badge&color=111111)](LICENSE)
+[![Flutter: Android and iOS 15.0+](https://img.shields.io/badge/Flutter-Android%20%C2%B7%20iOS%2015.0%2B-111111?style=for-the-badge&color=111111&logo=flutter&logoColor=white)](#requirements) [![Dart 3.13.1+](https://img.shields.io/badge/Dart-3.13.1%2B-111111?style=for-the-badge&color=111111&logo=dart&logoColor=white)](https://dart.dev) [![License: MIT](https://img.shields.io/badge/License-MIT-111111?style=for-the-badge&color=111111)](LICENSE)
 
 [Website](https://wiro.ai) · [Models](https://wiro.ai/models) · [Docs](https://wiro.ai/docs/realtime-voice-conversation) · [Dashboard](https://wiro.ai/panel)
 
