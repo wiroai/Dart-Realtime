@@ -36,7 +36,53 @@ void main() {
     expect(service.snapshot.microphoneActive, isTrue);
   });
 
-  test('a growing utterance refines the transcript in place', () async {
+  test('each transcript piece is appended with one space', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:If'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:I'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:could'));
+
+    expect(service.snapshot.transcript, 'If I could');
+    expect(
+      service.snapshot.protocolEvents.where(
+        (event) => event == 'task_output',
+      ),
+      hasLength(3),
+    );
+  });
+
+  test('a piece that starts with the previous one is kept', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:we'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:were'));
+
+    expect(service.snapshot.transcript, 'we were');
+  });
+
+  test('a repeated piece is kept', () async {
+    final dependencies = TranscriptionTestDependencies();
+    final service = dependencies.createService();
+    addTearDown(service.dispose);
+    await service.start();
+
+    dependencies.session
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:the'))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:the'));
+
+    expect(service.snapshot.transcript, 'the the');
+  });
+
+  test('a whitespace-only piece is ignored', () async {
     final dependencies = TranscriptionTestDependencies();
     final service = dependencies.createService();
     addTearDown(service.dispose);
@@ -44,44 +90,8 @@ void main() {
 
     dependencies.session
       ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world'));
-
-    expect(service.snapshot.transcript, 'Hello world');
-    expect(
-      service.snapshot.protocolEvents.where(
-        (event) => event == 'task_output',
-      ),
-      hasLength(2),
-    );
-  });
-
-  test('a new utterance joins the transcript instead of erasing it', () async {
-    final dependencies = TranscriptionTestDependencies();
-    final service = dependencies.createService();
-    addTearDown(service.dispose);
-    await service.start();
-
-    dependencies.session
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world.'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:How are'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:How are you?'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Good.'));
-
-    expect(
-      service.snapshot.transcript,
-      'Hello world. How are you? Good.',
-    );
-  });
-
-  test('a shorter re-emit of the live utterance changes nothing', () async {
-    final dependencies = TranscriptionTestDependencies();
-    final service = dependencies.createService();
-    addTearDown(service.dispose);
-    await service.start();
-
-    dependencies.session
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello world'))
-      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:Hello'));
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER:   '))
+      ..emit(const RealtimeOutputEvent('TRANSCRIPT_USER: world '));
 
     expect(service.snapshot.transcript, 'Hello world');
   });

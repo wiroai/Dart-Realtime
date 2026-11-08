@@ -77,11 +77,8 @@ final class SpeechToTextSessionService
 
   TranscriptionSessionSnapshot _snapshot = const TranscriptionSessionSnapshot();
 
-  /// Utterances the model has moved past, joined for display.
-  String _confirmedTranscript = '';
-
-  /// The utterance still being refined by the model.
-  String _liveSegment = '';
+  /// Every transcript piece received so far, joined with single spaces.
+  String _transcript = '';
   RealtimeSessionLease? _sessionLease;
   RealtimeSessionClient? _session;
   StreamSubscription<RealtimeEvent>? _eventSubscription;
@@ -151,8 +148,7 @@ final class SpeechToTextSessionService
   Future<void> _start() async {
     final operationId = _guard.begin();
     _protocolLog.clear();
-    _confirmedTranscript = '';
-    _liveSegment = '';
+    _transcript = '';
     _publish(
       _snapshot.copyWith(
         status: ViewStatus.loading,
@@ -358,8 +354,7 @@ final class SpeechToTextSessionService
     if (_guard.isDisposed || _snapshot.sessionState.isActive) {
       return;
     }
-    _confirmedTranscript = '';
-    _liveSegment = '';
+    _transcript = '';
     _publish(_snapshot.copyWith(transcript: ''));
   }
 
@@ -439,13 +434,12 @@ final class SpeechToTextSessionService
     }
   }
 
-  /// Folds one transcript event into the running text.
+  /// Appends one transcript piece to the running text.
   ///
-  /// The model streams each utterance progressively and starts over at the
-  /// next one, so a raw replace would leave only the final fragment of the
-  /// last sentence on screen. An event that extends the live utterance
-  /// refines it in place; an event that does not is a new utterance, and
-  /// the finished one moves into the confirmed text for good.
+  /// Each `TRANSCRIPT_USER` message carries only new text, often a single
+  /// word or a short phrase, and never repeats or revises an earlier one.
+  /// The full transcript is every non-empty piece, trimmed and joined with
+  /// single spaces, which is also how the server saves it.
   void _handleOutput(RealtimeOutputEvent event) {
     final message = event.message;
     if (!message.startsWith(_transcriptPrefix)) {
@@ -457,23 +451,14 @@ final class SpeechToTextSessionService
       _appendProtocolEvent(event.wireType);
       return;
     }
-    if (text.startsWith(_liveSegment) || _liveSegment.isEmpty) {
-      _liveSegment = text;
-    } else if (!_liveSegment.startsWith(text)) {
-      _confirmedTranscript = _joinedTranscript;
-      _liveSegment = text;
-    }
+    _transcript = _transcript.isEmpty ? text : '$_transcript $text';
     _publish(
       _snapshot.copyWith(
-        transcript: _joinedTranscript,
+        transcript: _transcript,
         protocolEvents: _protocolLog.add(event.wireType),
       ),
     );
   }
-
-  String get _joinedTranscript => _confirmedTranscript.isEmpty
-      ? _liveSegment
-      : '$_confirmedTranscript $_liveSegment';
 
   Future<void> _handleStreamEnded(int operationId) async {
     await _stopCapture();
