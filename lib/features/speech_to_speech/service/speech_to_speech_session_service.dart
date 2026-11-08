@@ -992,11 +992,11 @@ final class SpeechToSpeechSessionService
         _naturalCompletion ??= _completeNaturally(operationId);
       // Wiro documents task_error as interim stderr that a task can still
       // recover from, and for a batch run that holds. A conversation is
-      // different: the frame arrives when the task is gone — reaped for
-      // silence, most often — and the socket stays open afterwards, so
+      // different: the frame arrives when the task is gone (reaped for
+      // silence, most often) and the socket stays open afterwards, so
       // treating it as a log entry leaves the microphone streaming into a
-      // task that will never answer, billing for it, while the user talks
-      // to nothing. Ending here costs a tap and nothing else.
+      // task that will never answer while the user talks to nothing.
+      // Ending here costs a tap and nothing else.
       case RealtimeErrorEvent():
         _appendProtocolEvent(event.wireType);
         _naturalCompletion ??= _completeNaturally(operationId);
@@ -1114,10 +1114,11 @@ final class SpeechToSpeechSessionService
         microphoneActive: false,
       ),
     );
-    // Wiro stops a task that has gone quiet, so that it stops charging for
-    // one. Dialling straight back in would undo that on the user's behalf
-    // and bill them for a conversation nobody is having, so the orb comes
-    // back and waits for whoever wants to keep talking.
+    // The server closes a session after 30 seconds without speech.
+    // Dialling straight back in would open a new task on the user's behalf
+    // for a conversation nobody is having, which a time-priced model
+    // charges for, so the orb comes back and waits for whoever wants to
+    // keep talking.
     if (_stopOperation == null) {
       _appendProtocolEvent('conversation_ended_remotely');
     }
@@ -1329,9 +1330,10 @@ final class SpeechToSpeechSessionService
     });
   }
 
-  /// A conversation nobody is having still bills, so a session left open —
-  /// a phone in a pocket, a forgotten tab — hangs up on itself. Ending it
-  /// the way the user would means no reconnect follows.
+  /// A session left open, a phone in a pocket or a forgotten tab, keeps
+  /// running for as long as it hears speech and is charged turn by turn the
+  /// whole time, so it hangs up on itself at the limit. Ending it the way
+  /// the user would means no reconnect follows.
   void _enforceSessionLimit(Duration elapsed) {
     final limit = maxSessionDuration;
     if (limit <= Duration.zero || elapsed < limit || _stopOperation != null) {

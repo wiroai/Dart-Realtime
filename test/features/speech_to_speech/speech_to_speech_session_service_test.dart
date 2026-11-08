@@ -428,9 +428,8 @@ void main() {
     expect(service.snapshot.sessionState, RealtimeSessionState.completed);
   });
 
-  // Wiro stops a task that has gone quiet so it stops charging for it.
-  // Opening a replacement would spend that saving on a conversation nobody
-  // is having.
+  // The server closes a session after 30 seconds without speech. Opening a
+  // replacement would start a new task for a conversation nobody is having.
   test('a remote task end costs nothing more', () async {
     final dependencies = ConversationTestDependencies();
     final service = dependencies.createService(
@@ -859,8 +858,8 @@ void main() {
   });
 
   // The socket outlives the task it was carrying, so a session left up
-  // after task_error streams the microphone into nothing — and bills for
-  // it — while the user wonders why they are not being heard.
+  // after task_error streams the microphone into nothing while the user
+  // wonders why they are not being heard.
   test('a task_error hands the conversation back to the orb', () async {
     final dependencies = ConversationTestDependencies();
     final service = dependencies.createService();
