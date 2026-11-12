@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// Draws every layer of the orb: a blurred halo that swells with the live
 /// voice level, outward pulse rings, the filled core, waveform bars while

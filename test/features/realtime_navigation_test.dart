@@ -1,5 +1,5 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/app.dart';
 import 'package:wiro_realtime/app/widgets/session_controls.dart';
 import 'package:wiro_realtime/core/auth/wiro_credentials.dart';

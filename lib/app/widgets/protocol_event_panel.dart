@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
 
 class ProtocolEventPanel extends StatelessWidget {
