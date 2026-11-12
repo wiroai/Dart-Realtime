@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/layout/project_duration.dart';
 import 'package:wiro_realtime/app/theme/app_colors.dart';
 import 'package:wiro_realtime/app/widgets/session_ring_button.dart';

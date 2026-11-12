@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/layout/project_duration.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
 import 'package:wiro_realtime/app/theme/app_theme.dart';
