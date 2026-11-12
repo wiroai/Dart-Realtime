@@ -13,6 +13,15 @@ import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 
 import 'support/speech_test_dependencies.dart';
 
+/// Matches the error a disposed notifier throws when it is used again.
+///
+/// Up to Flutter 3.47 that is a `FlutterError`. From Flutter 3.50,
+/// `ChangeNotifier` comes from `package:listen`, which throws a `StateError`
+/// when no binding is initialized, as in a plain `test`.
+final Matcher throwsDisposedNotifierError = throwsA(
+  anyOf(isFlutterError, isStateError),
+);
+
 void main() {
   test('requires non-empty trimmed text', () async {
     final dependencies = SpeechTestDependencies();
@@ -59,7 +68,7 @@ void main() {
 
     expect(
       () => oldPrompt.addListener(() {}),
-      throwsFlutterError,
+      throwsDisposedNotifierError,
     );
     expect(service.snapshot.selectedModel, WiroModelCatalog.voxcpm2);
     expect(dependencies.apiClient.lastParameters, {
@@ -80,7 +89,7 @@ void main() {
     expect(service.promptNotifier.value, isEmpty);
     expect(
       () => oldPrompt.addListener(() {}),
-      throwsFlutterError,
+      throwsDisposedNotifierError,
     );
   });
 
