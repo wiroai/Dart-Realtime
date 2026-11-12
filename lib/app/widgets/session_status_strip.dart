@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_state.dart';
 

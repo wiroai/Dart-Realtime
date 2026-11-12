@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 import 'package:wiro_realtime/app/layout/project_padding.dart';
 import 'package:wiro_realtime/app/theme/app_text_styles.dart';

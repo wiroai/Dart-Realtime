@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/core/audio/pcm_noise_gate.dart';
 import 'package:wiro_realtime/core/audio/voice_engine_pcm_audio.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_dependencies.dart';

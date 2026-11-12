@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/core/audio/pcm_audio_recorder.dart';
 import 'package:wiro_realtime/core/audio/record_pcm_capture_source.dart';
 import 'package:wiro_realtime/core/realtime/realtime_session_dependencies.dart';

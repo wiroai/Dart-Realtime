@@ -1,6 +1,6 @@
 import 'dart:math' as math;
 
-import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:wiro_realtime/app/extensions/theme_extension.dart';
 
 /// The "I can hear you" signal: a row of bars moving while the
